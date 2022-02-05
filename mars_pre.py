@@ -1,5 +1,6 @@
-from _serial import SerialPortManager
+from _serial import SerialPortManager, SerialPort
 import time
+from multiprocessing import Process
 from _threading import SerialReadingProcess, SerialWriterProcess
 
 
@@ -7,10 +8,18 @@ if __name__ == '__main__':
     # Initialize a virtual serial port
     # Load a SPM, connect a subscriber to the port
     spm = SerialPortManager()
-    ports = spm.load_ports(['/dev/ttys001'])
-    print(ports)
-    sr_process = SerialReadingProcess(ports['/dev/ttys001'])
-    sr_process.start()
+    ports = spm.load_ports()
+
+    for port in ports.keys():
+        print(f"Writing to port: {port}")
+        ports[port].write_to_serial('v')
+        time.sleep(2)
+        print("Starting buffer reading")
+        check = ports[port].check_port()
+        print(check)
+        #sr_process = Process(target = ports[port].check_port())
+        #sr_process = SerialReadingProcess(spm)
+        #sr_process.start()
 
 
 

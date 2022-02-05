@@ -15,29 +15,26 @@ class SerialPort(serial.Serial):
         self.listener.append(subscriber)
 
     def notify(self):
-        self.listener.update()
+        for l in self.listener:
+            l.update()
+    
+    def chunked_stream(self, chunk_size=100):
+        """ Read all characters on the serial port and return them. """
+        if not self.timeout:
+            raise TypeError('Port needs to have a timeout set!')
 
-    def start_stream(self):
-        # NOTE: this function has to run within a thread 
-        # in order to avoid program freezing
-        print("Starting the stream reading...")
+        read_buffer = b''
         while True:
-            #print(self.in_waiting)
-            if self.in_waiting:
-                decoded_bytes = self.read(100000)
-                #print(decoded_bytes)
-
-    """ 
-            if self.in_waiting > 0:
-                try:
-                    print("Reading something")
-                    decoded_bytes = self.read(100000)
-                    print(decoded_bytes)
+            try:
+                byte_chunk = self.read(chunk_size)
+                #print(byte_chunk)
+                read_buffer += byte_chunk
+                if not len(byte_chunk) == chunk_size:
+                    print(f"Decoded: {read_buffer.decode()}")
                     self.notify()
-                except:
-                    print("Keyboard Interrupt")
-                    break
-    """
+            except Exception as e:
+                print(e)
+                break
 
     def read_data(self, end='\n'):
         print(self.in_waiting)
@@ -48,7 +45,7 @@ class SerialPort(serial.Serial):
     def write_to_serial(self, message):
         # Write bytes to serial port
         if self.is_open:
-            self.write(message.encode())
+            self.write(message.encode('utf8'))
         else:
             print("Could not write message: the port is closed!")
     
@@ -60,10 +57,8 @@ class SerialPort(serial.Serial):
             while('111' not in line):
                 c = self.read().decode('utf-8', errors='replace') #leggo un carattere alla volta
                 line += c #aggiungo carattere a una stringa
+                #print(line)
         return line.replace('1','')
-                #char_counter -= 1
-                #if (char_counter == 0): #se raggiungo 100 caratteri senza trovare '111' esco
-                #    break
 
 class SerialSubscriber():
     def __init__(self):
@@ -86,17 +81,17 @@ class SerialPortManager():
         self.ports_list = [port for port in list_ports.comports()]
         self.ports = {}
     
-    def load_ports(self, ports=None):
+    def load_ports(self, virtual_ports=None):
         # Initializes the SerialPort objects array
-        if ports is None:
+        if virtual_ports is None:
             ports = self.ports_list
         for port in ports:
-            try: 
-                if ports is None:
-                    ser = SerialPort(port=port.name, baudrate=57600, timeout=1.5, write_timeout=0)
+            try:
+                if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
+                    ser = SerialPort(port=port.device, baudrate=57600, timeout=1.5, write_timeout=0)
                 else:
                     print("Connecting to virtual port(s)")
-                    ser = SerialPort(port=port)
+                    ser = SerialPort(port=port, baudrate=57600, timeout=1.5, write_timeout=0)
                 if ser.is_open:
                     print(f"Adding subscriber to {ser.name}")
                     s = SerialSubscriber()
@@ -104,8 +99,8 @@ class SerialPortManager():
                     print(f"Subscriber added to: {(ser.name)}")
                     self.ports[(ser.name)] = ser
             except: 
-               print(f"Couldn't connect to the port: {ser.name}")
-        
+                print(f"Could not connect to port: {port}")
+
         return self.ports
 
     def interrupt_ports(self):

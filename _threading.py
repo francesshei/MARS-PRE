@@ -9,7 +9,7 @@ class SerialReadingProcess(Process):
         self.port = port
 
     def run(self):
-        self.port.start_stream()
+        self.port.my_start_stream()
     
 
 class SerialWriterProcess(Process):
