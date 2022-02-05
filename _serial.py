@@ -4,7 +4,6 @@ import asyncio
 
 
 # TODO check https://stackoverflow.com/questions/21666106/using-serial-port-in-python3-asyncio
-
 class SerialPort(serial.Serial):
     """
     SerialPort is a compound class: both a serial.Serial and a publisher class. 
@@ -21,15 +20,24 @@ class SerialPort(serial.Serial):
     def start_stream(self):
         # NOTE: this function has to run within a thread 
         # in order to avoid program freezing
+        print("Starting the stream reading...")
         while True:
+            #print(self.in_waiting)
             if self.in_waiting:
+                decoded_bytes = self.read(100000)
+                #print(decoded_bytes)
+
+    """ 
+            if self.in_waiting > 0:
                 try:
-                    decoded_bytes = self.readline().decode("utf-8")
+                    print("Reading something")
+                    decoded_bytes = self.read(100000)
                     print(decoded_bytes)
                     self.notify()
                 except:
                     print("Keyboard Interrupt")
                     break
+    """
 
     def read_data(self, end='\n'):
         print(self.in_waiting)
@@ -78,19 +86,25 @@ class SerialPortManager():
         self.ports_list = [port for port in list_ports.comports()]
         self.ports = {}
     
-    def load_ports(self):
+    def load_ports(self, ports=None):
         # Initializes the SerialPort objects array
-        for port in self.ports_list:
+        if ports is None:
+            ports = self.ports_list
+        for port in ports:
             try: 
-                ser = SerialPort(port=port.device, baudrate=57600, timeout=1.5, write_timeout=0)
+                if ports is None:
+                    ser = SerialPort(port=port.name, baudrate=57600, timeout=1.5, write_timeout=0)
+                else:
+                    print("Connecting to virtual port(s)")
+                    ser = SerialPort(port=port)
                 if ser.is_open:
-                    print("Adding subscriber to serial port found")
+                    print(f"Adding subscriber to {ser.name}")
                     s = SerialSubscriber()
                     ser.subscribe(s)
-                    print(f"Subscriber added to: {(port.device).split('.')[1]}")
-                    self.ports[(port.device).split('.')[1]] = ser
+                    print(f"Subscriber added to: {(ser.name)}")
+                    self.ports[(ser.name)] = ser
             except: 
-                print(f"Could not load port: {port.device}")
+               print(f"Couldn't connect to the port: {ser.name}")
         
         return self.ports
 
