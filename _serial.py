@@ -42,7 +42,8 @@ class SerialPort(serial.Serial):
             while h != 0xc0 or count <= packet_length:
                 b = self.read(1)
                 raw_data.append(b)
-                h = b[0]
+                if len(b)>0:
+                    h = b[0]
                 count += 1
                 #print(len(raw_data))
             if len(raw_data)==packet_length:
