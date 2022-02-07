@@ -1,6 +1,8 @@
 import serial
 from serial.tools import list_ports
 import asyncio
+import struct
+import sys
 
 
 # TODO check https://stackoverflow.com/questions/21666106/using-serial-port-in-python3-asyncio
@@ -18,23 +20,82 @@ class SerialPort(serial.Serial):
         for l in self.listener:
             l.update()
     
-    def chunked_stream(self, chunk_size=100):
-        """ Read all characters on the serial port and return them. """
-        if not self.timeout:
-            raise TypeError('Port needs to have a timeout set!')
+    def chunked_stream(self, packet_length=27):
+        # TODO: think of better solution to 
+        # clean the serial buffer. It works
+        # on first initialization for cleaning
+        # the sensor's name string
+        self.readline()
 
-        read_buffer = b''
+        b = b''
+        h = 0
+        raw_data = []
         while True:
-            try:
-                byte_chunk = self.read(chunk_size)
-                #print(byte_chunk)
-                read_buffer += byte_chunk
-                if not len(byte_chunk) == chunk_size:
-                    print(f"Decoded: {read_buffer.decode()}")
-                    self.notify()
-            except Exception as e:
-                print(e)
-                break
+            # Look for the packet header
+            while h != 0xa0:
+                b = self.read(1)
+                print(b)
+                if len(b)>0:
+                    h = b[0]
+            count = 1
+            # Read until the packet tail (0xC0)
+            while h != 0xc0 or count <= packet_length:
+                b = self.read(1)
+                raw_data.append(b)
+                h = b[0]
+                count += 1
+                #print(len(raw_data))
+            if len(raw_data)==packet_length:
+                data = struct.unpack('hhhhhhhhhhhhhx', b''.join(raw_data))
+                print("Packet received")
+                print(f"Data: {data}")
+            
+            data = raw_data = []
+            count = 0
+            b = 0 
+            """  
+                data = self.read()
+                if len(data) > 0:
+                    raw += data
+                    buffer += data
+                    #print(buffer[-1])
+
+                    if buffer[0] == 160 and buffer[-1] == 192:
+            
+            print("Packet received")
+            #print(f"Buffered data: {buffer}, len: {len(buffer)}")
+            #print(f"Raw data: {raw}, len {len(raw)}")
+            acc = [ 
+                int.from_bytes(raw[1:3], sys.byteorder),
+                int.from_bytes(raw[3:5], sys.byteorder),
+                int.from_bytes(raw[5:7], sys.byteorder) 
+            ] 
+            gyr = [
+                int.from_bytes(raw[7:9], sys.byteorder), 
+                int.from_bytes(raw[9:11], sys.byteorder),
+                int.from_bytes(raw[11:13], sys.byteorder)
+            ]
+            mag = [
+                int.from_bytes(raw[13:15], sys.byteorder), 
+                int.from_bytes(raw[15:17], sys.byteorder),
+                int.from_bytes(raw[17:19], sys.byteorder)
+            ]
+            quat = [
+                int.from_bytes(raw[19:21], sys.byteorder), 
+                int.from_bytes(raw[21:23], sys.byteorder),
+                int.from_bytes(raw[23:25], sys.byteorder),
+                int.from_bytes(raw[25:27], sys.byteorder)    
+            ]
+            # Assembling the packet data
+            print(f"Acc: {acc}")
+            print(f"Gyr: {gyr}")
+            print(f"Mag: {mag}")
+            print(f"Quat: {quat}")
+
+            buffer = []
+            raw = b''
+            """
+
 
     def read_data(self, end='\n'):
         print(self.in_waiting)
@@ -85,7 +146,7 @@ class SerialPortManager():
         # Initializes the SerialPort objects array
         if virtual_ports is None:
             ports = self.ports_list
-        for port in ports:
+        for port in ports[-1:]:
             try:
                 if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
                     ser = SerialPort(port=port.device, baudrate=57600, timeout=1.5, write_timeout=0)

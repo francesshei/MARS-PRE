@@ -15,10 +15,11 @@ if __name__ == '__main__':
         ports[port].write_to_serial('v')
         time.sleep(2)
         print("Starting buffer reading")
-        check = ports[port].check_port()
-        print(check)
-        #sr_process = Process(target = ports[port].check_port())
-        #sr_process = SerialReadingProcess(spm)
+        print(ports[port].check_port())
+        #print(check)
+        time.sleep(2)
+        sr_process = Process(target = ports[port].chunked_stream())
+        sr_process = SerialReadingProcess(spm)
         #sr_process.start()
 
 
