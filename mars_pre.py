@@ -10,21 +10,20 @@ if __name__ == '__main__':
     spm = SerialPortManager()
     ports = spm.load_ports()
 
+    # Initialize all the ports found from the SPM
+    # (following Laura's code)
     for port in ports.keys():
+        # Sending the first letter to have the port name 
         print(f"Writing to port: {port}")
         ports[port].write_to_serial('v')
         time.sleep(2)
-        print("Starting buffer reading")
         print(ports[port].check_port())
-        #print(check)
-        time.sleep(2)
-        sr_process = Process(target = ports[port].chunked_stream())
-        sr_process = SerialReadingProcess(spm)
+    
+    # Starting to read data continuously
+    for port in ports.keys():
+        print("Starting buffer reading")
+        # Start a process that will run the "SerialPort.chuncked_stream" 
+        # function 
+        sr_process = Process(target = ports[port].packets_stream())
         #sr_process.start()
 
-
-
-#ports = spm.load_ports()
-#ports['BT-STERNUM-SPPDev'].write_to_serial('v')
-#time.sleep(1)
-#ports['BT-STERNUM-SPPDev'].start_stream()
