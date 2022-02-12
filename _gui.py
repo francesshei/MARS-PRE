@@ -23,6 +23,17 @@ class MarsPreController():
 
     def calibrate_sensor(self, port):
         # TODO: send calibration command to sensors 
+        """
+        From Laura's code:
+        if self.readable_magcal_pipes[self.position].poll():
+                data_cal = self.readable_magcal_pipes[self.position].recv() #ricevo info su ricalibrazione mag
+                if data_cal == 'start calibration':
+                    self.ser.write(b'b') #invio carattere ad Arduino per informarlo del voler fare ricalibrazione 
+                else:
+                    print(data_cal) #al termine della calibrazione ottendgo valori di bias e scale
+                    data_send = data_cal+'\n'
+                    self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
+        """
         print(f"Calibrating {port}")
 
 class MarsPreModel():

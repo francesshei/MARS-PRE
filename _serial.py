@@ -3,6 +3,7 @@ from serial.tools import list_ports
 import asyncio
 import struct
 import sys
+import numpy as np
 
 
 class SerialPort(serial.Serial):
@@ -17,31 +18,51 @@ class SerialPort(serial.Serial):
     def subscribe(self, subscriber):
         self.listener.append(subscriber)
 
-    def notify(self):
-        for l in self.listener:
-            l.update()
+    def notify(self, data):
+        """
+        Notify the subscriber (listener) that data has been received
+        """
+        # NOTE: we're accessing the first elements of the listeners list
+        # as each serial port shall have one listener only.
+        # If data is a single 'int' then it's the battery level
+        if isinstance(data,int): 
+             self.listener[0].compute_battery_level(data)  
+        else: 
+            self.listener[0].update(data)
     
     # SERIAL-RELATED FUNCTIONS: read/write from BT port 
-    def packets_stream(self, packet_length=27):
+    def packets_stream(self, packet_length=27, batt_message_length=2):
         """
         Reads the stream of data transmitted by the serial port
         in packets of fixed lenght and data.
         Returns (acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z, mag_x, mag_y, mag_z, quat_0, quat_1, quat_2, quat_3)
         """
-
-        # TODO: think of better solution to clean the serial buffer. 
-        # It works on first initialization for cleaning the sensor's name string
+        # Empties the buffer from the name of the sensor read by default
         self.readline()
-
+        # Initializing quantities needed for serial reading
         b = b''
-        h = 0
+        h = t = count = 0 
         raw_data = []
+        batt_lvl_data = []
         while True:
             # Look for the packet header (0xA0)
             while h != 0xa0:
                 b = self.read(1)
                 if len(b)>0:
                     h = b[0]
+                # Battery level is sent among the packets with a different header
+                    if h == 0xf0:
+                        while t != 0xff and count <= batt_message_length:
+                            b = self.read(1)
+                            batt_lvl_data.append(b)
+                            if len(b)>0:
+                                t = b[0]
+                            count += 1
+                        # Unpack the battery level unsigned int and notify the subscriber
+                        batt_lvl = struct.unpack('Bx', b''.join(batt_lvl_data))[0]
+                        self.notify(batt_lvl)
+                        batt_lvl_data = []
+                        t = 0 
             count = 1
             # Once found, read until the packet tail (0xC0)
             # or until the end of the expected packet length
@@ -56,27 +77,20 @@ class SerialPort(serial.Serial):
             if len(raw_data)==packet_length:
                 # Automatically converts raw bytes to a int16 tuple
                 data = struct.unpack('hhhhhhhhhhhhhx', b''.join(raw_data))
-                print("Packet received")
-                print(f"Data: {data}, {type(data)}")
+                self.notify(list(data))
+                #print("Packet received")
+                #print(f"Data: {data}, {type(data)}")
             
             # Re-initialize the variables to read the next packet
             data = raw_data = []
             count = 0
             b = 0 
 
-
-    def read_data(self, end='\n'):
-        print(self.in_waiting)
-        while self.in_waiting:
-            data = self.read_until(end).decode('utf-8', errors='replace')
-            return data
-
     def write_to_serial(self, message):
         """
         Converts the message string passed as argument 
         to a byte array that is sent to the port
         """
-
         if self.is_open:
             self.write(message.encode('utf8'))
             self.flush()
@@ -99,12 +113,70 @@ class SerialPort(serial.Serial):
         return line.replace('1','')
 
 class SerialSubscriber():
+    """
+    Holds a data structure of the packets received by its publisher 
+    that is updates at each incoming packet 
+    """
     def __init__(self):
-        pass
+        self.batt_level = 0.0
+        self.n_batt_updates = 0
 
-    def update(self):
-        print("Update received!")
-        pass
+    def compute_battery_level(self, new_lvl):
+        self.batt_level += new_lvl
+        self.n_batt_updates += 1
+        print(f"Battery percentage: {int(self.batt_level / self.n_batt_updates)} %")
+
+    def update(self, data):
+        # TODO: add packet processing here
+        # Sensitivity values from Laura's code
+        acc_sensitivity = 2.0 / 32768.0  
+        gyr_sensitivity = 250.0 / 32768.0
+        mag_sensitivity = 10. * 4800. / 32768.0
+
+        acc_array = np.array(data[0:3],dtype=np.float) *acc_sensitivity
+        gyro_array = np.array(data[3:6], dtype=np.float) *gyr_sensitivity * np.pi/180  # Rad/s conversion
+        mag_array = np.array(data[6:9], dtype=np.float) * mag_sensitivity
+
+        #Acc = [i * aRes for i in Acc] #porto dati nelle loro M.U
+        #Acc_arr = np.array(Acc)
+
+        """
+                        Quat = [i/10000 for i in Quat] #in Arduino quat eramo stati moltiplicati per 1000 per mandare dati in int
+                        Q = Quaternion(Quat)
+                        inv_Q = Q.inverse
+                        Acc_fixRF = Q.rotate(Acc_arr) #ruoto accelerazione in sist terrestre
+                        Acc_lin_arr = np.subtract(Acc_fixRF,g_ideal) #sottraggo gravità
+                        FreeAcc_bodyRF = inv_Q.rotate(Acc_lin_arr).tolist() #riporto in sistema del sensore
+                        dt_real = Acc + Gyro + Mag + Quat + FreeAcc_bodyRF
+                        dt_real.append(time.time())
+                        count_values += 1
+                        #seguente funzione è usata in caso non si stia registrando per resettare tabella in cui vengono messi i dati
+                        #man mano che arrivano per non appesantire troppo la memoria
+                        if rec_flag == False:
+                            if count_values % 5400 == 0: #ogni circa 1 min viene resettata data_struct
+                                count_values = 0
+                                self.data_struct = {}
+                                for field in self.myFields:
+                                    self.data_struct[field] = []
+                        if flag_repetition_extraction == True:
+                            self.repetition_extraction(exercise_name,dt_real) #solo per sensore da cui estraggo ripetizioni
+                        for i, field in enumerate(self.data_struct.keys()):
+                            self.data_struct[field].append(dt_real[i]) #aggiungo dati a data_struct
+                        if position_called == self.position: #se il sensore è stato chiamato dalla GUI x visualizzazione
+                            if data_sended_counter == 0:
+                                print(self.position+' start streaming')
+                            data_sended_counter += 1
+                            if self.data_receive.poll() == False:
+                                self.data_send.send(dt_real) #invio pacchetto di dati al Thread x visualizzazione       
+                else: #se leggo solo un dato --> batteria
+                    if position_called == self.position:
+                        self.battery_level_send.send(samp) #invio livello batteria x essere mostrato in GUI
+        """
+
+
+        #print("Update received!")
+        #print(f"{acc_array}")
+        #print(f"{gyro_array}")
     
 
 class SerialPortManager():
