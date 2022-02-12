@@ -144,6 +144,13 @@ class SerialPortManager():
 
     def interrupt_ports(self):
         pass
+    
+    def test_process(self):
+        # NOTE: debug purposes only
+        i = 0 
+        while i < 100:
+            print(f"Process running: {i}")
+            i += 1
 
 
 
