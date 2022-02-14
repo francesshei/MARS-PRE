@@ -25,7 +25,7 @@ if __name__ == '__main__':
         print("Starting buffer reading")
         # Start a process that will run the "SerialPort.chuncked_stream" 
         # function 
-        sr_process = Process(target=ports[port].packets_stream())
+        #sr_process = Process(target=ports[port].packets_stream())
         #sr_process.start()
     
     app = ttk.Window(
