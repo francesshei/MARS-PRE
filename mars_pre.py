@@ -1,9 +1,10 @@
 from _serial import SerialPortManager, SerialPort
 import time
-from multiprocessing import Process
+from threading import Thread
 from _threading import SerialReadingProcess, SerialWriterProcess
 from _gui import MarsPreView
 import ttkbootstrap as ttk
+import threading
 
 if __name__ == '__main__':
     # Initialize a virtual serial port
@@ -19,14 +20,13 @@ if __name__ == '__main__':
         ports[port].write_to_serial('v')
         time.sleep(2)
         print(ports[port].check_port())
-    
-    # Starting to read data continuously
+
     for port in ports.keys():
-        print("Starting buffer reading")
-        # Start a process that will run the "SerialPort.chuncked_stream" 
-        # function 
-        #sr_process = Process(target=ports[port].packets_stream())
-        #sr_process.start()
+        # Serial threads have to start before the application 
+        # NOTE: this will continuously without the GUI interrupting them
+        # The subscriber will be the one in charge to decide whether to save the data or not  
+        thread = Thread(target=ports[port].packets_stream)
+        thread.start()
     
     app = ttk.Window(
         title="MARS-PRE",
@@ -35,5 +35,7 @@ if __name__ == '__main__':
         resizable=(True, True),
     )
     MarsPreView(app, spm=spm)
+    app_thread = threading.Thread(target=app.mainloop())
+    app_thread.start()
     app.mainloop()
 

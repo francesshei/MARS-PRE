@@ -7,16 +7,20 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.style import Bootstyle
 
+from multiprocessing import Process
+from threading import Thread
+
 import datetime
 import pathlib
 from queue import Queue
-from threading import Thread
 from tkinter.filedialog import askdirectory
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap import utility
 import os
 import csv
+
+
 
 
 class MarsPreController():
@@ -37,6 +41,29 @@ class MarsPreController():
                     self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
         """
         print(f"Calibrating {port}")
+    
+    def recording_button_pressed(self, model, view):
+        ports = model.spm.ports
+        if not model.recording:
+            view.bl_button.configure(bootstyle='danger')
+            view.bl_button.configure(text='Stop recording')
+            model.recording = True
+            for port in ports.keys():
+                ports[port].listener[0].is_recording = True
+            
+
+        elif model.recording:
+            view.bl_button.configure(bootstyle='success')
+            view.bl_button.configure(text='Start recording')
+            model.recording = False
+            for port in ports.keys():
+                ports[port].listener[0].is_recording = False
+
+        # NOTE: debug purposes only
+        #for port in self.model.spm.ports_list[:3]:
+        #    self.sensors_lables[port.device].config(foreground="gray")
+        #    self.calibration_buttons[port.device].configure(state=DISABLED)
+    
 
     def save_file(self, path, filename):
         if not path or not filename:
@@ -108,7 +135,7 @@ class MarsPreController():
 class MarsPreModel():
     def __init__(self, spm):
         self.spm = spm
-
+        self.recording = False
 
 class MarsPreView(ttk.Frame):
 
@@ -134,8 +161,8 @@ class MarsPreView(ttk.Frame):
         # Sensors-related button 
         bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
         bl_button_frame.pack()
-        bl_button = ttk.Button(bl_button_frame, text = "Test button", command=self.on_button_pressed, width=25,  bootstyle="secondary")
-        bl_button.pack(fill=X, expand=YES)
+        self.bl_button = ttk.Button(bl_button_frame, text="Start recording", command= lambda model = self.model, view = self : self.controller.recording_button_pressed(model, view), width=25,  bootstyle="success")
+        self.bl_button.pack(fill=X, expand=YES)
         #  ----------------------------------------------------------------
         # File saving 
         fs_label = "Store acquisition data:"
@@ -185,11 +212,6 @@ class MarsPreView(ttk.Frame):
             calibration_buttons[port.device] = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port.device : self.controller.calibrate_sensor(port), bootstyle="outline-secondary")
             calibration_buttons[port.device].pack()
     
-    def on_button_pressed(self):
-        # NOTE: debug purposes only
-        for port in self.model.spm.ports_list[:3]:
-            self.sensors_lables[port.device].config(foreground="gray")
-            self.calibration_buttons[port.device].configure(state=DISABLED)
 
     
 

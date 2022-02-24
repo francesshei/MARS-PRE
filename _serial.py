@@ -120,6 +120,7 @@ class SerialSubscriber():
     def __init__(self):
         self.batt_level = 0.0
         self.n_batt_updates = 0
+        self.is_recording = False
 
     def compute_battery_level(self, new_lvl):
         self.batt_level += new_lvl
@@ -128,55 +129,57 @@ class SerialSubscriber():
 
     def update(self, data):
         # TODO: add packet processing here
-        # Sensitivity values from Laura's code
-        acc_sensitivity = 2.0 / 32768.0  
-        gyr_sensitivity = 250.0 / 32768.0
-        mag_sensitivity = 10. * 4800. / 32768.0
+        # Update only recives packets when the flag (that can be set false by GUI) allows it 
+        if self.is_recording:
+            # Sensitivity values from Laura's code
+            acc_sensitivity = 2.0 / 32768.0  
+            gyr_sensitivity = 250.0 / 32768.0
+            mag_sensitivity = 10. * 4800. / 32768.0
 
-        acc_array = np.array(data[0:3],dtype=np.float) *acc_sensitivity
-        gyro_array = np.array(data[3:6], dtype=np.float) *gyr_sensitivity * np.pi/180  # Rad/s conversion
-        mag_array = np.array(data[6:9], dtype=np.float) * mag_sensitivity
+            acc_array = np.array(data[0:3],dtype=np.float) *acc_sensitivity
+            gyro_array = np.array(data[3:6], dtype=np.float) *gyr_sensitivity * np.pi/180  # Rad/s conversion
+            mag_array = np.array(data[6:9], dtype=np.float) * mag_sensitivity
 
-        #Acc = [i * aRes for i in Acc] #porto dati nelle loro M.U
-        #Acc_arr = np.array(Acc)
+            #Acc = [i * aRes for i in Acc] #porto dati nelle loro M.U
+            #Acc_arr = np.array(Acc)
 
-        """
-                        Quat = [i/10000 for i in Quat] #in Arduino quat eramo stati moltiplicati per 1000 per mandare dati in int
-                        Q = Quaternion(Quat)
-                        inv_Q = Q.inverse
-                        Acc_fixRF = Q.rotate(Acc_arr) #ruoto accelerazione in sist terrestre
-                        Acc_lin_arr = np.subtract(Acc_fixRF,g_ideal) #sottraggo gravità
-                        FreeAcc_bodyRF = inv_Q.rotate(Acc_lin_arr).tolist() #riporto in sistema del sensore
-                        dt_real = Acc + Gyro + Mag + Quat + FreeAcc_bodyRF
-                        dt_real.append(time.time())
-                        count_values += 1
-                        #seguente funzione è usata in caso non si stia registrando per resettare tabella in cui vengono messi i dati
-                        #man mano che arrivano per non appesantire troppo la memoria
-                        if rec_flag == False:
-                            if count_values % 5400 == 0: #ogni circa 1 min viene resettata data_struct
-                                count_values = 0
-                                self.data_struct = {}
-                                for field in self.myFields:
-                                    self.data_struct[field] = []
-                        if flag_repetition_extraction == True:
-                            self.repetition_extraction(exercise_name,dt_real) #solo per sensore da cui estraggo ripetizioni
-                        for i, field in enumerate(self.data_struct.keys()):
-                            self.data_struct[field].append(dt_real[i]) #aggiungo dati a data_struct
-                        if position_called == self.position: #se il sensore è stato chiamato dalla GUI x visualizzazione
-                            if data_sended_counter == 0:
-                                print(self.position+' start streaming')
-                            data_sended_counter += 1
-                            if self.data_receive.poll() == False:
-                                self.data_send.send(dt_real) #invio pacchetto di dati al Thread x visualizzazione       
-                else: #se leggo solo un dato --> batteria
-                    if position_called == self.position:
-                        self.battery_level_send.send(samp) #invio livello batteria x essere mostrato in GUI
-        """
+            """
+                            Quat = [i/10000 for i in Quat] #in Arduino quat eramo stati moltiplicati per 1000 per mandare dati in int
+                            Q = Quaternion(Quat)
+                            inv_Q = Q.inverse
+                            Acc_fixRF = Q.rotate(Acc_arr) #ruoto accelerazione in sist terrestre
+                            Acc_lin_arr = np.subtract(Acc_fixRF,g_ideal) #sottraggo gravità
+                            FreeAcc_bodyRF = inv_Q.rotate(Acc_lin_arr).tolist() #riporto in sistema del sensore
+                            dt_real = Acc + Gyro + Mag + Quat + FreeAcc_bodyRF
+                            dt_real.append(time.time())
+                            count_values += 1
+                            #seguente funzione è usata in caso non si stia registrando per resettare tabella in cui vengono messi i dati
+                            #man mano che arrivano per non appesantire troppo la memoria
+                            if rec_flag == False:
+                                if count_values % 5400 == 0: #ogni circa 1 min viene resettata data_struct
+                                    count_values = 0
+                                    self.data_struct = {}
+                                    for field in self.myFields:
+                                        self.data_struct[field] = []
+                            if flag_repetition_extraction == True:
+                                self.repetition_extraction(exercise_name,dt_real) #solo per sensore da cui estraggo ripetizioni
+                            for i, field in enumerate(self.data_struct.keys()):
+                                self.data_struct[field].append(dt_real[i]) #aggiungo dati a data_struct
+                            if position_called == self.position: #se il sensore è stato chiamato dalla GUI x visualizzazione
+                                if data_sended_counter == 0:
+                                    print(self.position+' start streaming')
+                                data_sended_counter += 1
+                                if self.data_receive.poll() == False:
+                                    self.data_send.send(dt_real) #invio pacchetto di dati al Thread x visualizzazione       
+                    else: #se leggo solo un dato --> batteria
+                        if position_called == self.position:
+                            self.battery_level_send.send(samp) #invio livello batteria x essere mostrato in GUI
+            """
 
 
-        #print("Update received!")
-        #print(f"{acc_array}")
-        #print(f"{gyro_array}")
+            print("Update received!")
+            #print(f"{acc_array}")
+            #print(f"{gyro_array}")
     
 
 class SerialPortManager():
@@ -195,11 +198,11 @@ class SerialPortManager():
         # Initializes the SerialPort objects array
         if virtual_ports is None:
             ports = self.ports_list
-        for port in ports[-1:]:
+        for port in ports[-2:]:
             try:
                 if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
                     # NOTE: timeout increased to 2 - was 1.5 - to avoid serial exceptions
-                    ser = SerialPort(port=port.device, baudrate=57600, timeout=2, write_timeout=0)
+                    ser = SerialPort(port=port.device, baudrate=57600, timeout=2.5, write_timeout=0)
                 else:
                     print("Connecting to virtual port(s)")
                     ser = SerialPort(port=port, baudrate=57600, timeout=1.5, write_timeout=0)
