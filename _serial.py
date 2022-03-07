@@ -4,7 +4,7 @@ import asyncio
 import struct
 import sys
 import numpy as np
-
+import time
 
 class SerialPort(serial.Serial):
     """
@@ -121,6 +121,7 @@ class SerialSubscriber():
         self.batt_level = 0.0
         self.n_batt_updates = 0
         self.is_recording = False
+        self.queue = np.empty((1,9), dtype=np.float) 
 
     def compute_battery_level(self, new_lvl):
         self.batt_level += new_lvl
@@ -131,6 +132,7 @@ class SerialSubscriber():
         # TODO: add packet processing here
         # Update only recives packets when the flag (that can be set false by GUI) allows it 
         if self.is_recording:
+            delta_time = time.time() 
             # Sensitivity values from Laura's code
             acc_sensitivity = 2.0 / 32768.0  
             gyr_sensitivity = 250.0 / 32768.0
@@ -139,6 +141,10 @@ class SerialSubscriber():
             acc_array = np.array(data[0:3],dtype=np.float) *acc_sensitivity
             gyro_array = np.array(data[3:6], dtype=np.float) *gyr_sensitivity * np.pi/180  # Rad/s conversion
             mag_array = np.array(data[6:9], dtype=np.float) * mag_sensitivity
+
+            queue_item = np.concatenate((acc_array, gyro_array, mag_array), axis=None)
+            self.queue = np.vstack((self.queue, queue_item))
+
 
             #Acc = [i * aRes for i in Acc] #porto dati nelle loro M.U
             #Acc_arr = np.array(Acc)
@@ -178,6 +184,7 @@ class SerialSubscriber():
 
 
             print("Update received!")
+            print(self.queue.shape)
             #print(f"{acc_array}")
             #print(f"{gyro_array}")
     
