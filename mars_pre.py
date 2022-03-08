@@ -1,7 +1,6 @@
 from _serial import SerialPortManager, SerialPort
 import time
 from threading import Thread
-from _threading import SerialReadingProcess, SerialWriterProcess
 from _gui import MarsPreView
 import ttkbootstrap as ttk
 import threading
