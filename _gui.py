@@ -7,15 +7,18 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.style import Bootstyle
 
+from multiprocessing import Process
+from threading import Thread
+
 import datetime
 import pathlib
 from queue import Queue
-from threading import Thread
 from tkinter.filedialog import askdirectory
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap import utility
 import os
+import numpy as np
 import csv
 
 
@@ -37,8 +40,30 @@ class MarsPreController():
                     self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
         """
         print(f"Calibrating {port}")
+    
+    def recording_button_pressed(self, model, view):
+        ports = model.spm.ports
+        if not model.recording:
+            view.bl_button.configure(bootstyle='danger')
+            view.bl_button.configure(text='Stop recording')
+            model.recording = True
+            for port in ports.keys():
+                ports[port].listener[0].is_recording = True
+        
+        elif model.recording:
+            view.bl_button.configure(bootstyle='success')
+            view.bl_button.configure(text='Start recording')
+            model.recording = False
+            for port in ports.keys():
+                ports[port].listener[0].is_recording = False
 
-    def save_file(self, path, filename):
+        # NOTE: debug purposes only
+        #for port in self.model.spm.ports_list[:3]:
+        #    self.sensors_lables[port.device].config(foreground="gray")
+        #    self.calibration_buttons[port.device].configure(state=DISABLED)
+
+    def save_file(self, path, filename, model):
+        ports = model.spm.ports
         if not path or not filename:
             # Pop-up warning window
             top = ttk.Toplevel()
@@ -75,22 +100,29 @@ class MarsPreController():
             top.transient()
             top.grab_set()
            
-        else:   
-                                    
-            with open(path + "/" + filename + ".csv", mode='w', newline="") as csv_file:
-                nomicolonne = ['a', 'b', 'c']
-                writer = csv.DictWriter(csv_file, fieldnames=nomicolonne)
-                writer.writeheader()
-                writer.writerow({'a': 'ciao', 'b': 'come', 'c': 'stai?'})
-                writer.writerow({'a': 'hello', 'b': 'how', 'c': 'are you?'})
-                print("Data saved in : " + path + filename)
+        else: 
+            for port in ports.keys():
+                np.savetxt(
+                    f"{path}/{filename}-{port.split('/')[-1]}.csv", 
+                    ports[port].listener[0].queue[1:], 
+                    delimiter=',', 
+                    header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z", 
+                    comments="")     
+
+            #with open(path + "/" + filename + ".csv", mode='w', newline="") as csv_file:
+            #    nomicolonne = ['a', 'b', 'c']
+            #    writer = csv.DictWriter(csv_file, fieldnames=nomicolonne)
+            #    writer.writeheader()
+            #    writer.writerow({'a': 'ciao', 'b': 'come', 'c': 'stai?'})
+            #    writer.writerow({'a': 'hello', 'b': 'how', 'c': 'are you?'})
+            #print(f"Data saved in {path}/{filename}-{port.split('/')[-1]}.csv")
 
             top = ttk.Toplevel()
             top.title('')
 
             _frame = ttk.Frame(top, padding = 25)
             _frame.pack(expand = NO, side=TOP)
-            label = ttk.Label(_frame, text = "Data saved in : " + path +"/" + filename + ".csv", \
+            label = ttk.Label(_frame, text = f"Data saved in {path}/{filename}-{port.split('/')[-1]}.csv", \
                                             wraplength=220, anchor=ttk.NW, justify=ttk.LEFT)
             label.pack(expand = NO)
 
@@ -103,15 +135,13 @@ class MarsPreController():
             top.grab_set()
 
 
-    
-
 class MarsPreModel():
     def __init__(self, spm):
         self.spm = spm
+        self.recording = False
 
 
 class MarsPreView(ttk.Frame):
-
     queue = Queue()
     searching = False
 
@@ -134,8 +164,8 @@ class MarsPreView(ttk.Frame):
         # Sensors-related button 
         bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
         bl_button_frame.pack()
-        bl_button = ttk.Button(bl_button_frame, text = "Test button", command=self.on_button_pressed, width=25,  bootstyle="secondary")
-        bl_button.pack(fill=X, expand=YES)
+        self.bl_button = ttk.Button(bl_button_frame, text="Start recording", command= lambda model = self.model, view = self : self.controller.recording_button_pressed(model, view), width=25,  bootstyle="success")
+        self.bl_button.pack(fill=X, expand=YES)
         #  ----------------------------------------------------------------
         # File saving 
         fs_label = "Store acquisition data:"
@@ -164,10 +194,8 @@ class MarsPreView(ttk.Frame):
         entry2.insert(END,"data")
         entry2.pack(side=BOTTOM, expand=YES, pady=5)
         # Save button
-        save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get()))
+        save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get(),self.model))
         save_button.pack()
-      
-    
 
     def create_sensors_list(self):
         # TODO: use port names instead of devices
@@ -185,11 +213,6 @@ class MarsPreView(ttk.Frame):
             calibration_buttons[port.device] = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port.device : self.controller.calibrate_sensor(port), bootstyle="outline-secondary")
             calibration_buttons[port.device].pack()
     
-    def on_button_pressed(self):
-        # NOTE: debug purposes only
-        for port in self.model.spm.ports_list[:3]:
-            self.sensors_lables[port.device].config(foreground="gray")
-            self.calibration_buttons[port.device].configure(state=DISABLED)
 
     
 
