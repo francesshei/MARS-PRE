@@ -10,7 +10,14 @@ from ttkbootstrap.style import Bootstyle
 from multiprocessing import Process
 from threading import Thread
 
-import datetime
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
+import matplotlib.animation as animation
+from matplotlib import style
+
+import time
 import pathlib
 from queue import Queue
 from tkinter.filedialog import askdirectory
@@ -40,6 +47,28 @@ class MarsPreController():
                     self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
         """
         print(f"Calibrating {port}")
+
+    def update_graph(self, model, axes, figure):
+        ports = model.spm.ports
+        port = list(ports.keys())[0]
+        while True: 
+            # Clear the graph to draw new data
+            axes.cla()
+            axes.set_ylim([-5,5])
+            _font = {'family': 'sans-serif',
+                    'color':  'black',
+                    'weight': 'normal',
+                    'size': 10,
+            }
+            axes.set_xlabel("Time", fontdict=_font)
+            axes.set_ylabel("Acceleration", fontdict=_font)
+            #axes.grid()
+            # Retrieve the data to be plotted
+            data = ports[port].listener[0].plot_data[1,:]
+            axes.plot(range(25), data, marker='o', color='orange')
+            figure.draw()
+            time.sleep(0.001)
+
     
     def recording_button_pressed(self, model, view):
         ports = model.spm.ports
@@ -196,6 +225,28 @@ class MarsPreView(ttk.Frame):
         # Save button
         save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get(),self.model))
         save_button.pack()
+        #  ----------------------------------------------------------------
+        # Plots section 
+        self.plot_frame = ttk.Frame(self)
+        self.plot_frame.pack(fill=X, expand=YES, side=RIGHT)
+        
+        # Create the figure
+        figure = Figure(figsize=(6, 4), dpi=100)
+        # Create the axes
+        axes = figure.add_subplot()
+        _grey_rgb = (197/255, 202/255, 208/255)
+        axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in axes.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        #axes.grid()
+
+        # Create the FigureCanvasTkAgg widget and 
+        # place it in the corresponding frame
+        figure_canvas = FigureCanvasTkAgg(figure, self.plot_frame)
+        figure_canvas.get_tk_widget().pack(fill=BOTH)
+
+        #Start the thread to continuously update the plot
+        Thread(target = lambda model = self.model, ax = axes, fig = figure_canvas: self.controller.update_graph(model,ax,fig)).start()
 
     def create_sensors_list(self):
         # TODO: use port names instead of devices
@@ -204,7 +255,7 @@ class MarsPreView(ttk.Frame):
         #on_calibration = lambda port : self.controller.calibrate_sensor(port)
         """ Adding a list of sensors name as read by the serial port manager """
         for port in self.model.spm.ports_list:
-            sensor_row = ttk.Frame(self.ss_lframe)
+            sensor_row = ttk.Frame(self.ss_lframe, padding = 5)
             sensor_row.pack(fill=X, expand=YES)
             label_text = port.device.split('-')[1].lower().capitalize() + ' ' + port.device.split('-')[2].lower() \
                         if len(port.device.split('-')[1]) <= 5 else port.device.split('-')[1].lower().capitalize()
