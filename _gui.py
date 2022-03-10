@@ -48,25 +48,69 @@ class MarsPreController():
         """
         print(f"Calibrating {port}")
 
-    def update_graph(self, model, axes, figure):
+    def update_graph(self, model, figure, canvas):
         ports = model.spm.ports
         port = list(ports.keys())[0]
-        while True: 
-            # Clear the graph to draw new data
-            axes.cla()
-            axes.set_ylim([-5,5])
-            _font = {'family': 'sans-serif',
+        _grey_rgb = (197/255, 202/255, 208/255)
+        _font = {'family': 'sans-serif',
                     'color':  'black',
                     'weight': 'normal',
                     'size': 10,
             }
-            axes.set_xlabel("Time", fontdict=_font)
-            axes.set_ylabel("Acceleration", fontdict=_font)
-            #axes.grid()
+
+        # Create the axes
+        # IMU
+        acc_axes = figure.add_subplot(311)
+        acc_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in acc_axes.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        # Gyroscope
+        gyr_axes = figure.add_subplot(312)
+        gyr_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in gyr_axes.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        # Magnetometer
+        mag_axes = figure.add_subplot(313)
+        mag_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in mag_axes.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        
+        while True: 
             # Retrieve the data to be plotted
-            data = ports[port].listener[0].plot_data[1,:]
-            axes.plot(range(25), data, marker='o', color='orange')
-            figure.draw()
+            data = ports[port].listener[0].plot_data
+            # Clear the graph to draw new data
+            # IMU 
+            acc_axes.cla()
+            acc_axes.set_ylim([-5,5])
+            #acc_axes.set_xlabel("Time", fontdict=_font)
+            acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
+            acc_axes.plot(range(25), data[0,:], marker='o', label='x')
+            acc_axes.plot(range(25), data[1,:], marker='o', label='y')
+            acc_axes.plot(range(25), data[2,:], marker='o', label='z')
+            acc_axes.legend()
+
+            # Gyroscope
+            gyr_axes.cla()
+            gyr_axes.set_ylim([-5,5])
+            #acc_axes.set_xlabel("Time", fontdict=_font)
+            gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
+            gyr_axes.plot(range(25), data[3,:], marker='o', label='x')
+            gyr_axes.plot(range(25), data[4,:], marker='o', label='y')
+            gyr_axes.plot(range(25), data[5,:], marker='o', label='z')
+            gyr_axes.legend()
+
+            # Magnetometer  
+            mag_axes.cla()
+            mag_axes.set_ylim([-5,5])
+            #acc_axes.set_xlabel("Time", fontdict=_font)
+            mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
+            mag_axes.plot(range(25), data[6,:], marker='o', label='x')
+            mag_axes.plot(range(25), data[7,:], marker='o', label='y')
+            mag_axes.plot(range(25), data[8,:], marker='o', label='z')
+            mag_axes.legend()
+
+            # Finally, re-draw the canvas
+            canvas.draw()
             time.sleep(0.001)
 
     
@@ -187,7 +231,7 @@ class MarsPreView(ttk.Frame):
         #  ----------------------------------------------------------------
         # SpaceSensor labelled frame
         ss_lframe_label = "Available SpaceSens sensors:"
-        self.ss_lframe = ttk.Labelframe(self.outer_l_column, text= ss_lframe_label, padding=15)
+        self.ss_lframe = ttk.Labelframe(self.outer_l_column, text= ss_lframe_label, padding=15, bg = 'blue')
         self.ss_lframe.pack(side=TOP)
         self.create_sensors_list()
         # Sensors-related button 
@@ -228,25 +272,17 @@ class MarsPreView(ttk.Frame):
         #  ----------------------------------------------------------------
         # Plots section 
         self.plot_frame = ttk.Frame(self)
-        self.plot_frame.pack(fill=X, expand=YES, side=RIGHT)
+        self.plot_frame.pack(fill=BOTH, expand=YES, side=RIGHT)
         
         # Create the figure
-        figure = Figure(figsize=(6, 4), dpi=100)
-        # Create the axes
-        axes = figure.add_subplot()
-        _grey_rgb = (197/255, 202/255, 208/255)
-        axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
-        for spine in axes.spines.values():
-            spine.set_edgecolor(_grey_rgb)
-        #axes.grid()
-
+        figure = Figure(figsize=(15, 5), dpi=100)
         # Create the FigureCanvasTkAgg widget and 
         # place it in the corresponding frame
         figure_canvas = FigureCanvasTkAgg(figure, self.plot_frame)
         figure_canvas.get_tk_widget().pack(fill=BOTH)
 
-        #Start the thread to continuously update the plot
-        Thread(target = lambda model = self.model, ax = axes, fig = figure_canvas: self.controller.update_graph(model,ax,fig)).start()
+        # Start the thread to continuously update the plot
+        Thread(target = lambda model = self.model, fig = figure, canvas = figure_canvas: self.controller.update_graph(model,fig,canvas)).start()
 
     def create_sensors_list(self):
         # TODO: use port names instead of devices
@@ -254,15 +290,16 @@ class MarsPreView(ttk.Frame):
         calibration_buttons = {}
         #on_calibration = lambda port : self.controller.calibrate_sensor(port)
         """ Adding a list of sensors name as read by the serial port manager """
-        for port in self.model.spm.ports_list:
+        ports = self.model.spm.ports
+        for port in list(ports.keys()):
             sensor_row = ttk.Frame(self.ss_lframe, padding = 5)
             sensor_row.pack(fill=X, expand=YES)
-            label_text = port.device.split('-')[1].lower().capitalize() + ' ' + port.device.split('-')[2].lower() \
-                        if len(port.device.split('-')[1]) <= 5 else port.device.split('-')[1].lower().capitalize()
-            sensors_lables[port.device] = ttk.Label(sensor_row, text=label_text, width=25)
-            sensors_lables[port.device].pack(side=LEFT, padx=(15, 0))
-            calibration_buttons[port.device] = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port.device : self.controller.calibrate_sensor(port), bootstyle="outline-secondary")
-            calibration_buttons[port.device].pack()
+            label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
+                        if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
+            sensors_lables[port] = ttk.Label(sensor_row, text=label_text, width=25)
+            sensors_lables[port].pack(side=LEFT, padx=(15, 0))
+            calibration_buttons[port] = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port : self.controller.calibrate_sensor(port), bootstyle="outline-secondary")
+            calibration_buttons[port].pack()
     
 
     
