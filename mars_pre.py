@@ -1,10 +1,7 @@
-from _serial import SerialPortManager
-import time
-from threading import Thread
-from multiprocessing import Process
-from _gui import MarsPreView
+from _gui import Model, View, Controller
 import ttkbootstrap as ttk
 
+"""
 if __name__ == '__main__':
     # Initialize a virtual serial port
     # Load a SPM, connect a subscriber to the port
@@ -41,4 +38,26 @@ if __name__ == '__main__':
     MarsPreView(app, spm=spm)
     # Launching the GUI app
     app.mainloop()
+"""
 
+class App(ttk.Window):
+    def __init__(self):
+        super().__init__(
+        title="MARS-PRE",
+        themename="flatly",
+        size=(350, 450),
+        resizable=(True, True))
+
+        # Create a model
+        model = Model()
+        # Create a view and place it on the root window
+        view = View(self)
+        # Create a controller
+        controller = Controller(view, model)
+        # Set the controller to the view
+        view.set_controller(controller)
+
+# Start the application
+if __name__ == '__main__':
+    app = App()
+    app.mainloop()

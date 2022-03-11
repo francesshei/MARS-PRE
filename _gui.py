@@ -3,7 +3,6 @@
 # while the controller detects actions sent by the view and chooses the best strategy 
 # See also: https://github.com/facebook/flux/tree/520a60c18aa3e9af59710d45cd37b9a6894a7bce/examples/flux-concepts
 
-from asyncio import threads
 import ttkbootstrap as ttk
 from tkinter import PhotoImage
 from ttkbootstrap import utility
@@ -19,12 +18,37 @@ import time
 import os
 import numpy as np
 from threading import Thread
-from multiprocessing import Process 
+from multiprocessing import Process
+
+from _serial import SerialSubscriber, SerialPort, SerialPortManager
+from serial.tools import list_ports
 
 
-class MarsPreController():
-    def __init__(self):
-        pass
+class Controller():
+    def __init__(self, view, model):
+        self.view = view 
+        self.model = model
+    
+    def create_sensors_list(self):
+        # TODO: use port names instead of devices
+        #calibration_buttons = {}
+        # Adding a list of sensors name as read by the serial port manager
+        for device in self.model.ports_list:
+        #for device in self.model.spm.ports_list:
+            port = device.device 
+            sensor_row = ttk.Frame(self.view.ss_frame, padding = 5)
+            sensor_row.pack(fill=X, expand=YES)
+            label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
+                        if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
+            _label = ttk.Label(sensor_row, text=label_text, width=15)
+            _label.pack(side=LEFT)
+            _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port = port : self.connect_sensor(port), bootstyle="primary")
+            _connect_button.pack(side=LEFT, padx=(15, 0))
+            _calibration_button = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port : self.calibrate_sensor(port), bootstyle="outline-secondary")
+            _calibration_button.pack(padx=(15, 0))
+    
+    def connect_sensor(self, port):
+        self.model.start_serial_process(port)
 
     def calibrate_sensor(self, port):
         # TODO: send calibration command to sensors 
@@ -40,7 +64,8 @@ class MarsPreController():
                     self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
         """
         print(f"Calibrating {port}")
-
+    
+    """
     def update_graph(self, model, figure, canvas):
         ports = model.spm.ports
         port = list(ports.keys())[0]
@@ -105,9 +130,12 @@ class MarsPreController():
             # Finally, re-draw the canvas
             canvas.draw()
             time.sleep(0.001)
-
+    """
     
-    def recording_button_pressed(self, model, view):
+    def record(self):
+        print("Button pressed")
+        print(self.model.ports)
+        """
         ports = model.spm.ports
         if not model.recording:
             view.bl_button.configure(bootstyle='danger')
@@ -122,12 +150,13 @@ class MarsPreController():
             model.recording = False
             for port in ports.keys():
                 ports[port].listener[0].is_recording = False
+        """
 
         # NOTE: debug purposes only
         #for port in self.model.spm.ports_list[:3]:
         #    self.sensors_lables[port.device].config(foreground="gray")
         #    self.calibration_buttons[port.device].configure(state=DISABLED)
-
+    """
     def save_file(self, path, filename, model):
         ports = model.spm.ports
         if not path or not filename:
@@ -199,29 +228,99 @@ class MarsPreController():
 
             top.transient()
             top.grab_set()
+    """
+
+class Model():
+    """
+    The model act as a serial port manager: mantains an array of processes, 
+    each controlling a SerialPort object for all connected sensors. 
+    Each SerialPort manages its messages (transmitting / receiving); the
+    SerialPortManager implements the interrupt (e.g., when closing the program)
+    """
+    def __init__(self):
+        self.ports_list = [port for port in list_ports.comports()]
+        self.ports = []
+        
+        """ 
+        def load_ports(self, virtual_ports=None):
+        # Initializes the SerialPort objects array
+        if virtual_ports is None:
+            ports = self.ports_list
+        for port in ports[-3:]:
+            try:
+                if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
+                    # NOTE: timeout increased to 2 - was 1.5 - to avoid serial exceptions
+                    ser = SerialPort(port=port.device, baudrate=57600, timeout=None, write_timeout=0)
+                else:
+                    #print("Connecting to virtual port(s)")
+                    ser = SerialPort(port=port, baudrate=57600, timeout=1.5, write_timeout=0)
+                if ser.is_open:
+                    print(f"Adding subscriber to {ser.name}")
+                    s = SerialSubscriber()
+                    ser.subscribe(s)
+                    print(f"Subscriber added to: {(ser.name)}")
+                    self.ports[(ser.name)] = ser
+            except: 
+                print(f"Could not connect to port: {port}")
+
+        return self.ports
 
 
-class MarsPreModel():
-    def __init__(self, spm):
-        self.spm = spm
-        self.recording = False
+
+    
+        ports = spm.load_ports()
+    
+        # Initialize all the ports found from the SPM
+        sensors_used = 0
+        sensors_names = []
+        for port in ports.keys():
+            sensors_used += 1
+            # Sending the first letter to have the port name 
+            print(f"Writing to port: {port}")
+            ports[port].write_to_serial('v')
+            time.sleep(2)
+            sensors_names.append(ports[port].check_port())
+            
+        if len(sensors_names) == sensors_used: 
+            print("All sensors initialized successfully")
+            #for i, port in enumerate(ports.keys()):
+                # Serial threads have to start before the application 
+                # NOTE: this will continuously without the GUI interrupting them
+                # The subscriber will be the one in charge to decide whether to save the data or not  
+            #    processes.append(Thread(target=ports[port].packets_stream))
+            #    processes[i].start()
+        
+        """
+    def start_serial_process(self, port):
+        p = Process(target=self.setup_port,args=(port,))
+        print("Starting process")
+        p.start()
+        print("Process started")
+
+    def setup_port(self, port):
+        try:
+            ser = SerialPort(port=port, baudrate=57600, timeout=None, write_timeout=0)
+            if ser.is_open:
+                print(f"Adding subscriber to {ser.name}")
+                s = SerialSubscriber()
+                ser.subscribe(s)
+                print(f"Subscriber added to: {(ser.name)}")
+                # Bootstrapping the Arduino firmware loop
+                ser.write_to_serial('v')
+                self.ports.append(ser)
+                print("Port added to SPM")
+                print(self.ports)
+            ser.packets_stream()
+        except Exception as e: 
+            print(f"Could not connect to port: {port}, {e}")
 
 
-class MarsPreView(ttk.Frame):
-    def __init__(self, master, spm):
+
+class View(ttk.Frame):
+    def __init__(self, master):
         super().__init__(master, padding=15, bootstyle="light")
         self.pack(fill=BOTH, expand=YES)
-        threads = []
-        # Starting the processes here 
-        for i, port in enumerate(spm.ports.keys()):
-            # Serial threads have to start before the application 
-            # NOTE: this will continuously without the GUI interrupting them
-            # The subscriber will be the one in charge to decide whether to save the data or not  
-            threads.append(Thread(target=spm.ports[port].packets_stream))
-            threads[i].start()
-        print("All threads have been started")
-        self.model = MarsPreModel(spm)
-        self.controller = MarsPreController()
+        self.controller = None
         # Icons and images
         self.icons = [PhotoImage(name='asi', 
                 file='./icons/ASI.png'),
@@ -239,14 +338,11 @@ class MarsPreView(ttk.Frame):
         self.ss_frame.pack()
         ss_lframe_label = ttk.Label(self.ss_frame, text="Available SpaceSens sensors:", font="-size 18 -weight bold")
         ss_lframe_label.pack()
-        #self.ss_lframe = ttk.LabelFrame(self.outer_l_column, text= ss_lframe_label, padding=15)
-        #self.ss_lframe.pack(side=TOP)
-        self.create_sensors_list()
         # Sensors-related button 
-        #bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
-        #bl_button_frame.pack()
-        self.bl_button = ttk.Button(self.ss_frame, text="Start recording", command= lambda model = self.model, view = self : self.controller.recording_button_pressed(model, view), width=25,  bootstyle="success")
-        self.bl_button.pack(fill=X, expand=YES)
+        bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
+        bl_button_frame.pack()
+        self.bl_button = ttk.Button(self.ss_frame, text="Start recording", command=self.recording_button_pressed, width=25,  bootstyle="success")
+        self.bl_button.pack(fill=X, side=BOTTOM, expand=NO)
         #  ----------------------------------------------------------------
         # File saving 
         fs_frame = ttk.Frame(self.outer_l_column, padding=25)
@@ -276,8 +372,8 @@ class MarsPreView(ttk.Frame):
         entry2.insert(END,"data")
         entry2.pack(side=BOTTOM, expand=YES, pady=5)
         # Save button
-        save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get(),self.model))
-        save_button.pack()
+        #save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get(),self.model))
+        #save_button.pack()
         
         #Label container 
         labels_container = ttk.Frame(self.outer_l_column, bootstyle="light", padding=25)
@@ -305,26 +401,17 @@ class MarsPreView(ttk.Frame):
         figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
 
         # Start the thread to continuously update the plot
-        Thread(target = lambda model = self.model, fig = figure, canvas = figure_canvas: self.controller.update_graph(model,fig,canvas)).start()
+        #Thread(target = lambda model = self.model, fig = figure, canvas = figure_canvas: self.controller.update_graph(model,fig,canvas)).start()
+    
+    def set_controller(self, controller):
+        self.controller = controller
+        # Once the controller is set, sensors can be inserted in the view  
+        self.controller.create_sensors_list()
+    
+    def recording_button_pressed(self):
+        if self.controller:
+            self.controller.record()
 
-    def create_sensors_list(self):
-        # TODO: use port names instead of devices
-        sensors_lables = {}
-        calibration_buttons = {}
-        #on_calibration = lambda port : self.controller.calibrate_sensor(port)
-        """ Adding a list of sensors name as read by the serial port manager """
-        ports = self.model.spm.ports
-        for port in list(ports.keys()):
-        #for device in self.model.spm.ports_list:
-            #port = device.device 
-            sensor_row = ttk.Frame(self.ss_frame, padding = 5)
-            sensor_row.pack(fill=X, expand=YES)
-            label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
-                        if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
-            sensors_lables[port] = ttk.Label(sensor_row, text=label_text, width=20)
-            sensors_lables[port].pack(side=LEFT, padx=(15, 0))
-            calibration_buttons[port] = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port : self.controller.calibrate_sensor(port), bootstyle="outline-secondary")
-            calibration_buttons[port].pack()
     
 
     

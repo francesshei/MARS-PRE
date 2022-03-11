@@ -5,6 +5,7 @@ import struct
 import sys
 import numpy as np
 import time
+from multiprocessing.managers import BaseManager
 
 class SerialPort(serial.Serial):
     """
@@ -14,21 +15,18 @@ class SerialPort(serial.Serial):
     """
     # PUBLISHER-RELATED FUNCTIONS: to add listeners (subscribers) and 
     # notify them when new data is received.
-    listener = []
     def subscribe(self, subscriber):
-        self.listener.append(subscriber)
+        self.listener = subscriber
 
     def notify(self, data):
         """
         Notify the subscriber (listener) that data has been received
         """
-        # NOTE: we're accessing the first elements of the listeners list
-        # as each serial port shall have one listener only.
         # If data is a single 'int' then it's the battery level
         if isinstance(data,int): 
-             self.listener[0].compute_battery_level(data)  
+             self.listener.compute_battery_level(data)  
         else: 
-            self.listener[0].update(data)
+            self.listener.update(data)
     
     # SERIAL-RELATED FUNCTIONS: read/write from BT port 
     def packets_stream(self, packet_length=27, batt_message_length=2):
@@ -196,7 +194,7 @@ class SerialSubscriber():
         self.plot_data[:3, -1] = acc_array
         self.plot_data[3:6, -1] = gyro_array
         self.plot_data[6:9, -1] = mag_array
-    
+
 
 class SerialPortManager():
     """
@@ -242,6 +240,9 @@ class SerialPortManager():
         while i < 100:
             print(f"Process running: {i}")
             i += 1
+
+class MyManager(BaseManager):
+    pass
 
 
 
