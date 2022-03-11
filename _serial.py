@@ -67,11 +67,14 @@ class SerialPort(serial.Serial):
             # Once found, read until the packet tail (0xC0)
             # or until the end of the expected packet length
             while h != 0xc0 or count <= packet_length:
-                b = self.read(1)
-                raw_data.append(b)
-                if len(b)>0:
-                    h = b[0]
-                count += 1
+                try: 
+                    b = self.read(1)
+                    raw_data.append(b)
+                    if len(b)>0:
+                        h = b[0]
+                    count += 1
+                except: 
+                    print("Couldn't read byte")
             # Unpack the bytes received in
             # a proper data structure
             if len(raw_data)==packet_length:
@@ -211,11 +214,11 @@ class SerialPortManager():
         # Initializes the SerialPort objects array
         if virtual_ports is None:
             ports = self.ports_list
-        for port in ports[2:3]:
+        for port in ports[-3:]:
             try:
                 if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
                     # NOTE: timeout increased to 2 - was 1.5 - to avoid serial exceptions
-                    ser = SerialPort(port=port.device, baudrate=57600, timeout=2.5, write_timeout=0)
+                    ser = SerialPort(port=port.device, baudrate=57600, timeout=None, write_timeout=0)
                 else:
                     #print("Connecting to virtual port(s)")
                     ser = SerialPort(port=port, baudrate=57600, timeout=1.5, write_timeout=0)

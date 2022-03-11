@@ -3,30 +3,23 @@
 # while the controller detects actions sent by the view and chooses the best strategy 
 # See also: https://github.com/facebook/flux/tree/520a60c18aa3e9af59710d45cd37b9a6894a7bce/examples/flux-concepts
 
+from asyncio import threads
 import ttkbootstrap as ttk
+from tkinter import PhotoImage
+from ttkbootstrap import utility
 from ttkbootstrap.constants import *
 from ttkbootstrap.style import Bootstyle
 
-from multiprocessing import Process
-from threading import Thread
-
 import matplotlib
 matplotlib.use("TkAgg")
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-import matplotlib.animation as animation
-from matplotlib import style
 
 import time
-import pathlib
-from queue import Queue
-from tkinter.filedialog import askdirectory
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from ttkbootstrap import utility
 import os
 import numpy as np
-import csv
+from threading import Thread
+from multiprocessing import Process 
 
 
 class MarsPreController():
@@ -91,7 +84,7 @@ class MarsPreController():
 
             # Gyroscope
             gyr_axes.cla()
-            gyr_axes.set_ylim([-5,5])
+            gyr_axes.set_ylim([-10,10])
             #acc_axes.set_xlabel("Time", fontdict=_font)
             gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
             gyr_axes.plot(range(25), data[3,:], marker='o', label='x')
@@ -101,7 +94,7 @@ class MarsPreController():
 
             # Magnetometer  
             mag_axes.cla()
-            mag_axes.set_ylim([-5,5])
+            mag_axes.set_ylim([-20,20])
             #acc_axes.set_xlabel("Time", fontdict=_font)
             mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
             mag_axes.plot(range(25), data[6,:], marker='o', label='x')
@@ -215,35 +208,51 @@ class MarsPreModel():
 
 
 class MarsPreView(ttk.Frame):
-    queue = Queue()
-    searching = False
-
     def __init__(self, master, spm):
-        super().__init__(master, padding=15)
+        super().__init__(master, padding=15, bootstyle="light")
         self.pack(fill=BOTH, expand=YES)
+        threads = []
+        # Starting the processes here 
+        for i, port in enumerate(spm.ports.keys()):
+            # Serial threads have to start before the application 
+            # NOTE: this will continuously without the GUI interrupting them
+            # The subscriber will be the one in charge to decide whether to save the data or not  
+            threads.append(Thread(target=spm.ports[port].packets_stream))
+            threads[i].start()
+        print("All threads have been started")
         self.model = MarsPreModel(spm)
         self.controller = MarsPreController()
+        # Icons and images
+        self.icons = [PhotoImage(name='asi', 
+                file='./icons/ASI.png'),
+                    PhotoImage(name='iss', 
+                file='./icons/ISS.png')
+            ]
         #  ----------------------------------------------------------------
         #  ----------------------------------------------------------------
         # Left column header container 
-        self.outer_l_column = ttk.Frame(self)
+        self.outer_l_column = ttk.Frame(self, bootstyle="light")
         self.outer_l_column.pack(fill=Y, expand=NO, side=LEFT)
         #  ----------------------------------------------------------------
         # SpaceSensor labelled frame
-        ss_lframe_label = "Available SpaceSens sensors:"
-        self.ss_lframe = ttk.Labelframe(self.outer_l_column, text= ss_lframe_label, padding=15, bg = 'blue')
-        self.ss_lframe.pack(side=TOP)
+        self.ss_frame = ttk.Frame(self.outer_l_column, padding=25)
+        self.ss_frame.pack()
+        ss_lframe_label = ttk.Label(self.ss_frame, text="Available SpaceSens sensors:", font="-size 18 -weight bold")
+        ss_lframe_label.pack()
+        #self.ss_lframe = ttk.LabelFrame(self.outer_l_column, text= ss_lframe_label, padding=15)
+        #self.ss_lframe.pack(side=TOP)
         self.create_sensors_list()
         # Sensors-related button 
-        bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
-        bl_button_frame.pack()
-        self.bl_button = ttk.Button(bl_button_frame, text="Start recording", command= lambda model = self.model, view = self : self.controller.recording_button_pressed(model, view), width=25,  bootstyle="success")
+        #bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
+        #bl_button_frame.pack()
+        self.bl_button = ttk.Button(self.ss_frame, text="Start recording", command= lambda model = self.model, view = self : self.controller.recording_button_pressed(model, view), width=25,  bootstyle="success")
         self.bl_button.pack(fill=X, expand=YES)
         #  ----------------------------------------------------------------
         # File saving 
-        fs_label = "Store acquisition data:"
-        fs_frame = ttk.Labelframe(self.outer_l_column, text= fs_label, padding=25)
+        fs_frame = ttk.Frame(self.outer_l_column, padding=25)
         fs_frame.pack(side=TOP, expand=YES)
+        fs_label = ttk.Label(fs_frame, text= "Store acquisition data:", font="-size 18 -weight bold")
+        fs_label.pack()
         # First text input row
         entry1_row = ttk.Frame(fs_frame)
         entry1_row.pack(fill=Y, expand=YES)
@@ -269,17 +278,31 @@ class MarsPreView(ttk.Frame):
         # Save button
         save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get(),self.model))
         save_button.pack()
+        
+        #Label container 
+        labels_container = ttk.Frame(self.outer_l_column, bootstyle="light", padding=25)
+        labels_container.pack(side=BOTTOM, fill=BOTH, expand=NO)
+        iss = ttk.Label(labels_container, bootstyle="inverse-light", image='iss').pack(fill=X, pady=5, side=RIGHT)
+        asi = ttk.Label(labels_container, bootstyle="inverse-light", image='asi').pack(fill=X, pady=5, side=RIGHT)
         #  ----------------------------------------------------------------
         # Plots section 
-        self.plot_frame = ttk.Frame(self)
-        self.plot_frame.pack(fill=BOTH, expand=YES, side=RIGHT)
+        outer_r_column = ttk.Frame(self, bootstyle="light")
+        outer_r_column.pack(fill=BOTH, expand=YES, side=RIGHT)
+        # Logos
+        #asi = ttk.Label(outer_r_column, bootstyle="inverse-light", image='asi').pack(fill=X, pady=5, side=RIGHT)
+
+        self.plot_frame = ttk.Frame(outer_r_column, padding = 25)
+        self.plot_frame.pack(fill=BOTH, expand=YES, padx=8)
+
+        # Data label
+        data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots", font="-size 18 -weight bold").pack(fill=X)
         
         # Create the figure
-        figure = Figure(figsize=(15, 5), dpi=100)
+        figure = Figure(figsize=(15, 8), dpi=150)
         # Create the FigureCanvasTkAgg widget and 
         # place it in the corresponding frame
         figure_canvas = FigureCanvasTkAgg(figure, self.plot_frame)
-        figure_canvas.get_tk_widget().pack(fill=BOTH)
+        figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
 
         # Start the thread to continuously update the plot
         Thread(target = lambda model = self.model, fig = figure, canvas = figure_canvas: self.controller.update_graph(model,fig,canvas)).start()
@@ -292,11 +315,13 @@ class MarsPreView(ttk.Frame):
         """ Adding a list of sensors name as read by the serial port manager """
         ports = self.model.spm.ports
         for port in list(ports.keys()):
-            sensor_row = ttk.Frame(self.ss_lframe, padding = 5)
+        #for device in self.model.spm.ports_list:
+            #port = device.device 
+            sensor_row = ttk.Frame(self.ss_frame, padding = 5)
             sensor_row.pack(fill=X, expand=YES)
             label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
                         if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
-            sensors_lables[port] = ttk.Label(sensor_row, text=label_text, width=25)
+            sensors_lables[port] = ttk.Label(sensor_row, text=label_text, width=20)
             sensors_lables[port].pack(side=LEFT, padx=(15, 0))
             calibration_buttons[port] = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port : self.controller.calibrate_sensor(port), bootstyle="outline-secondary")
             calibration_buttons[port].pack()
