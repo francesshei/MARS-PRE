@@ -1,11 +1,9 @@
 import serial
 from serial.tools import list_ports
-import asyncio
 import struct
-import sys
 import numpy as np
 import time
-from multiprocessing.managers import BaseManager
+from multiprocessing.managers import BaseManager, NamespaceProxy
 
 class SerialPort(serial.Serial):
     """
@@ -15,6 +13,10 @@ class SerialPort(serial.Serial):
     """
     # PUBLISHER-RELATED FUNCTIONS: to add listeners (subscribers) and 
     # notify them when new data is received.
+    def __init__(self, port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=None):
+        super().__init__(port, baudrate, timeout=timeout, write_timeout=write_timeout)
+        self.listener = subscriber
+
     def subscribe(self, subscriber):
         self.listener = subscriber
 
@@ -36,7 +38,7 @@ class SerialPort(serial.Serial):
         Returns (acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z, mag_x, mag_y, mag_z, quat_0, quat_1, quat_2, quat_3)
         """
         # Empties the buffer from the name of the sensor read by default
-        self.readline()
+        #self.readline()
         # Initializing quantities needed for serial reading
         b = b''
         h = t = count = 0 
@@ -194,7 +196,9 @@ class SerialSubscriber():
         self.plot_data[:3, -1] = acc_array
         self.plot_data[3:6, -1] = gyro_array
         self.plot_data[6:9, -1] = mag_array
-
+    
+    def update_plot_data(self):
+        return self.plot_data
 
 class SerialPortManager():
     """
@@ -206,8 +210,31 @@ class SerialPortManager():
     def __init__(self):
         # Reads list of all the ports detected in a list 
         self.ports_list = [port for port in list_ports.comports()]
-        self.ports = {}
+        self._ports = {}
+        self._listeners = {}
     
+    def ports(self):
+        return self._ports
+    
+    def listeners(self):
+        return self._listeners
+    
+    def set_listener_active(self, port):
+        self._listeners[port].is_recording = True
+    
+    def get_listener_data(self, port):
+        return self._listeners[port].update_plot_data()
+
+    def set_port(self, port):
+        s = SerialSubscriber()
+        self._ports[port.name] = port
+        self._listeners[port.name] = s
+        self._ports[port.name].subscribe(s)
+    
+    #def set_listener_active(self, port_name):
+    #    self._ports[port_name].listener.is_recording = True
+
+    """
     def load_ports(self, virtual_ports=None):
         # Initializes the SerialPort objects array
         if virtual_ports is None:
@@ -230,7 +257,7 @@ class SerialPortManager():
                 print(f"Could not connect to port: {port}")
 
         return self.ports
-
+    """
     def interrupt_ports(self):
         pass
     
@@ -241,8 +268,35 @@ class SerialPortManager():
             print(f"Process running: {i}")
             i += 1
 
-class MyManager(BaseManager):
+
+class SerialProcessManager(BaseManager):
     pass
+
+
+
+class SerialProcessProxy(NamespaceProxy):
+    # __dunder__ methods of base NamespaceProxy, need to be exposed
+    # in addition to the desired methods
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','set_port', 'ports', 'listeners', 'set_listener_active') # 'get_listener_data', 'set_port', 'ports', 'listeners')
+
+    #def get_listener_data(self, port):
+    #    callmethod = object.__getattribute__(self, '_callmethod')
+    #    return callmethod(self.get_listener_data.__name__, (port,))
+    def set_port(self, port):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod(self.set_port.__name__, (port,))
+    def ports(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod(self.ports.__name__)
+    def listeners(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod(self.listeners.__name__)    
+    def set_listener_active(self, port):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod(self.set_listener_active.__name__, (port,))
+
+
+SerialProcessManager.register('SPM', SerialPortManager, SerialProcessProxy)
 
 
 

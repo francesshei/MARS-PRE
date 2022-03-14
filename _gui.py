@@ -3,6 +3,7 @@
 # while the controller detects actions sent by the view and chooses the best strategy 
 # See also: https://github.com/facebook/flux/tree/520a60c18aa3e9af59710d45cd37b9a6894a7bce/examples/flux-concepts
 
+from turtle import listen
 import ttkbootstrap as ttk
 from tkinter import PhotoImage
 from ttkbootstrap import utility
@@ -20,7 +21,7 @@ import numpy as np
 from threading import Thread
 from multiprocessing import Process
 
-from _serial import SerialSubscriber, SerialPort, SerialPortManager
+from _serial import SerialSubscriber, SerialPort, SerialProcessManager
 from serial.tools import list_ports
 
 
@@ -28,6 +29,7 @@ class Controller():
     def __init__(self, view, model):
         self.view = view 
         self.model = model
+        self.recording = False 
     
     def create_sensors_list(self):
         # TODO: use port names instead of devices
@@ -133,24 +135,25 @@ class Controller():
     """
     
     def record(self):
-        print("Button pressed")
-        print(self.model.ports)
-        """
-        ports = model.spm.ports
-        if not model.recording:
-            view.bl_button.configure(bootstyle='danger')
-            view.bl_button.configure(text='Stop recording')
-            model.recording = True
+        ports = self.model.spm.ports()
+        listeners = self.model.spm.listeners()
+        if not self.recording:
+            self.view.bl_button.configure(bootstyle='danger')
+            self.view.bl_button.configure(text='Stop recording')
+            self.recording = True
             for port in ports.keys():
-                ports[port].listener[0].is_recording = True
+                self.model.spm.set_listener_active(port)
+                #listeners[port].is_recording = True
+                print("Getting data:")
+                print(listeners[port].update_plot_data())
+                #print(ports[port].listener)
         
-        elif model.recording:
-            view.bl_button.configure(bootstyle='success')
-            view.bl_button.configure(text='Start recording')
-            model.recording = False
+        elif self.recording:
+            self.view.bl_button.configure(bootstyle='success')
+            self.view.bl_button.configure(text='Start recording')
+            self.recording = False
             for port in ports.keys():
-                ports[port].listener[0].is_recording = False
-        """
+                self.model.spm.ports()[port].listener.is_recording = False
 
         # NOTE: debug purposes only
         #for port in self.model.spm.ports_list[:3]:
@@ -237,9 +240,10 @@ class Model():
     Each SerialPort manages its messages (transmitting / receiving); the
     SerialPortManager implements the interrupt (e.g., when closing the program)
     """
-    def __init__(self):
+    def __init__(self, spm):
         self.ports_list = [port for port in list_ports.comports()]
         self.ports = []
+        self.spm = spm.SPM()
         
         """ 
         def load_ports(self, virtual_ports=None):
@@ -299,17 +303,19 @@ class Model():
 
     def setup_port(self, port):
         try:
-            ser = SerialPort(port=port, baudrate=57600, timeout=None, write_timeout=0)
+            s = SerialSubscriber()
+            ser = SerialPort(port, subscriber=s)
             if ser.is_open:
-                print(f"Adding subscriber to {ser.name}")
-                s = SerialSubscriber()
-                ser.subscribe(s)
-                print(f"Subscriber added to: {(ser.name)}")
+                #print("Initializing port subscriber")
+                print(f"Adding port to SPM")
+                self.spm.set_port(ser)
+                #listener = SerialSubscriber()
+                #ser.subscribe(listener)
+                #print(f"Adding port to SPM")
+                #self.spm.set_port(ser, listener)
+                print("Port added to SPM")
                 # Bootstrapping the Arduino firmware loop
                 ser.write_to_serial('v')
-                self.ports.append(ser)
-                print("Port added to SPM")
-                print(self.ports)
             ser.packets_stream()
         except Exception as e: 
             print(f"Could not connect to port: {port}, {e}")
