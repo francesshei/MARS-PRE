@@ -21,7 +21,7 @@ import numpy as np
 from threading import Thread
 from multiprocessing import Process
 
-from _serial import SerialSubscriber, SerialPort, SerialProcessManager
+from _serial import SerialSubscriber
 from serial.tools import list_ports
 
 
@@ -50,7 +50,8 @@ class Controller():
             _calibration_button.pack(padx=(15, 0))
     
     def connect_sensor(self, port):
-        self.model.start_serial_process(port)
+        self.model.start_serial_port(port)
+        Thread(target = lambda fig = self.view.figure, canvas = self.view.figure_canvas: self.update_graph(fig,canvas)).start()
 
     def calibrate_sensor(self, port):
         # TODO: send calibration command to sensors 
@@ -67,93 +68,89 @@ class Controller():
         """
         print(f"Calibrating {port}")
     
-    """
-    def update_graph(self, model, figure, canvas):
-        ports = model.spm.ports
-        port = list(ports.keys())[0]
-        _grey_rgb = (197/255, 202/255, 208/255)
-        _font = {'family': 'sans-serif',
-                    'color':  'black',
-                    'weight': 'normal',
-                    'size': 10,
-            }
+    
+    def update_graph(self, figure, canvas):
+        ports = self.model.ports
+        if len(ports) > 0: 
+            port = list(ports.keys())[0]
+            _grey_rgb = (197/255, 202/255, 208/255)
+            _font = {'family': 'sans-serif',
+                        'color':  'black',
+                        'weight': 'normal',
+                        'size': 10,
+                }
 
-        # Create the axes
-        # IMU
-        acc_axes = figure.add_subplot(311)
-        acc_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
-        for spine in acc_axes.spines.values():
-            spine.set_edgecolor(_grey_rgb)
-        # Gyroscope
-        gyr_axes = figure.add_subplot(312)
-        gyr_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
-        for spine in gyr_axes.spines.values():
-            spine.set_edgecolor(_grey_rgb)
-        # Magnetometer
-        mag_axes = figure.add_subplot(313)
-        mag_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
-        for spine in mag_axes.spines.values():
-            spine.set_edgecolor(_grey_rgb)
-        
-        while True: 
-            # Retrieve the data to be plotted
-            data = ports[port].listener[0].plot_data
-            # Clear the graph to draw new data
-            # IMU 
-            acc_axes.cla()
-            acc_axes.set_ylim([-5,5])
-            #acc_axes.set_xlabel("Time", fontdict=_font)
-            acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
-            acc_axes.plot(range(25), data[0,:], marker='o', label='x')
-            acc_axes.plot(range(25), data[1,:], marker='o', label='y')
-            acc_axes.plot(range(25), data[2,:], marker='o', label='z')
-            acc_axes.legend()
-
+            # Create the axes
+            # IMU
+            acc_axes = figure.add_subplot(311)
+            acc_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+            for spine in acc_axes.spines.values():
+                spine.set_edgecolor(_grey_rgb)
             # Gyroscope
-            gyr_axes.cla()
-            gyr_axes.set_ylim([-10,10])
-            #acc_axes.set_xlabel("Time", fontdict=_font)
-            gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
-            gyr_axes.plot(range(25), data[3,:], marker='o', label='x')
-            gyr_axes.plot(range(25), data[4,:], marker='o', label='y')
-            gyr_axes.plot(range(25), data[5,:], marker='o', label='z')
-            gyr_axes.legend()
+            gyr_axes = figure.add_subplot(312)
+            gyr_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+            for spine in gyr_axes.spines.values():
+                spine.set_edgecolor(_grey_rgb)
+            # Magnetometer
+            mag_axes = figure.add_subplot(313)
+            mag_axes.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+            for spine in mag_axes.spines.values():
+                spine.set_edgecolor(_grey_rgb)
+            
+            while True: 
+                # Retrieve the data to be plotted
+                data = ports[port].update_plot_data()
+                # Clear the graph to draw new data
+                # IMU 
+                acc_axes.cla()
+                acc_axes.set_ylim([-5,5])
+                #acc_axes.set_xlabel("Time", fontdict=_font)
+                acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
+                acc_axes.plot(range(25), data[0,:], marker='o', label='x')
+                acc_axes.plot(range(25), data[1,:], marker='o', label='y')
+                acc_axes.plot(range(25), data[2,:], marker='o', label='z')
+                acc_axes.legend()
 
-            # Magnetometer  
-            mag_axes.cla()
-            mag_axes.set_ylim([-20,20])
-            #acc_axes.set_xlabel("Time", fontdict=_font)
-            mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
-            mag_axes.plot(range(25), data[6,:], marker='o', label='x')
-            mag_axes.plot(range(25), data[7,:], marker='o', label='y')
-            mag_axes.plot(range(25), data[8,:], marker='o', label='z')
-            mag_axes.legend()
+                # Gyroscope
+                gyr_axes.cla()
+                gyr_axes.set_ylim([-10,10])
+                #acc_axes.set_xlabel("Time", fontdict=_font)
+                gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
+                gyr_axes.plot(range(25), data[3,:], marker='o', label='x')
+                gyr_axes.plot(range(25), data[4,:], marker='o', label='y')
+                gyr_axes.plot(range(25), data[5,:], marker='o', label='z')
+                gyr_axes.legend()
 
-            # Finally, re-draw the canvas
-            canvas.draw()
-            time.sleep(0.001)
-    """
+                # Magnetometer  
+                mag_axes.cla()
+                mag_axes.set_ylim([-20,20])
+                #acc_axes.set_xlabel("Time", fontdict=_font)
+                mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
+                mag_axes.plot(range(25), data[6,:], marker='o', label='x')
+                mag_axes.plot(range(25), data[7,:], marker='o', label='y')
+                mag_axes.plot(range(25), data[8,:], marker='o', label='z')
+                mag_axes.legend()
+
+                # Finally, re-draw the canvas
+                canvas.draw()
+                time.sleep(0.001)
     
     def record(self):
-        ports = self.model.spm.ports()
-        listeners = self.model.spm.listeners()
+        ports = self.model.ports
+        
         if not self.recording:
             self.view.bl_button.configure(bootstyle='danger')
             self.view.bl_button.configure(text='Stop recording')
             self.recording = True
             for port in ports.keys():
-                self.model.spm.set_listener_active(port)
-                #listeners[port].is_recording = True
-                print("Getting data:")
-                print(listeners[port].update_plot_data())
-                #print(ports[port].listener)
+                ports[port].start_recording()
         
         elif self.recording:
             self.view.bl_button.configure(bootstyle='success')
             self.view.bl_button.configure(text='Start recording')
             self.recording = False
             for port in ports.keys():
-                self.model.spm.ports()[port].listener.is_recording = False
+                ports[port].stop_recording()
 
         # NOTE: debug purposes only
         #for port in self.model.spm.ports_list[:3]:
@@ -242,9 +239,8 @@ class Model():
     """
     def __init__(self, spm):
         self.ports_list = [port for port in list_ports.comports()]
-        self.ports = []
-        self.spm = spm.SPM()
-        
+        self.ports = {}
+        self.spm = spm 
         """ 
         def load_ports(self, virtual_ports=None):
         # Initializes the SerialPort objects array
@@ -295,12 +291,21 @@ class Model():
             #    processes[i].start()
         
         """
-    def start_serial_process(self, port):
-        p = Process(target=self.setup_port,args=(port,))
-        print("Starting process")
-        p.start()
-        print("Process started")
-
+    def start_serial_port(self, port):
+        try:
+            s = SerialSubscriber()
+            serial_port = self.spm.SerialPort(port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=s)
+            #start_port(port)
+            serial_port.write_to_serial('v')
+            p = Process(target=serial_port.packets_stream)
+            print("Starting process")
+            p.start()
+            self.ports[port] = serial_port  
+        except Exception as e: 
+            print(f"Couldn't connect to serial port: {port}")
+            print(e)
+        
+    """
     def setup_port(self, port):
         try:
             s = SerialSubscriber()
@@ -319,6 +324,7 @@ class Model():
             ser.packets_stream()
         except Exception as e: 
             print(f"Could not connect to port: {port}, {e}")
+    """
 
 
 
@@ -390,29 +396,25 @@ class View(ttk.Frame):
         # Plots section 
         outer_r_column = ttk.Frame(self, bootstyle="light")
         outer_r_column.pack(fill=BOTH, expand=YES, side=RIGHT)
-        # Logos
-        #asi = ttk.Label(outer_r_column, bootstyle="inverse-light", image='asi').pack(fill=X, pady=5, side=RIGHT)
 
         self.plot_frame = ttk.Frame(outer_r_column, padding = 25)
         self.plot_frame.pack(fill=BOTH, expand=YES, padx=8)
 
         # Data label
         data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots", font="-size 18 -weight bold").pack(fill=X)
-        
+       
         # Create the figure
-        figure = Figure(figsize=(15, 8), dpi=150)
+        self.figure = Figure(figsize=(15, 8), dpi=150)
         # Create the FigureCanvasTkAgg widget and 
         # place it in the corresponding frame
-        figure_canvas = FigureCanvasTkAgg(figure, self.plot_frame)
-        figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
-
-        # Start the thread to continuously update the plot
-        #Thread(target = lambda model = self.model, fig = figure, canvas = figure_canvas: self.controller.update_graph(model,fig,canvas)).start()
+        self.figure_canvas = FigureCanvasTkAgg(self.figure, self.plot_frame)
+        self.figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
     
     def set_controller(self, controller):
         self.controller = controller
         # Once the controller is set, sensors can be inserted in the view  
         self.controller.create_sensors_list()
+        
     
     def recording_button_pressed(self):
         if self.controller:

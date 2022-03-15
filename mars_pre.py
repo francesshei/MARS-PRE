@@ -1,6 +1,6 @@
 from _gui import Model, View, Controller
 import ttkbootstrap as ttk
-from _serial import SerialProcessManager
+from _serial import SerialPortManager
 
 """
 if __name__ == '__main__':
@@ -50,7 +50,7 @@ class App(ttk.Window):
         resizable=(True, True))
 
         # Create a model
-        _spm = SerialProcessManager()
+        _spm = SerialPortManager()
         _spm.start()
         model = Model(_spm)
         # Create a view and place it on the root window
