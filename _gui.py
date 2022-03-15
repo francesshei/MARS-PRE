@@ -1,8 +1,3 @@
-#TODO: implement a Model-View-Controller design pattern to handle the GUI. 
-# The model acts as data-storage (roughly), the view is the front end (what the user sees)
-# while the controller detects actions sent by the view and chooses the best strategy 
-# See also: https://github.com/facebook/flux/tree/520a60c18aa3e9af59710d45cd37b9a6894a7bce/examples/flux-concepts
-
 import ttkbootstrap as ttk
 from tkinter import PhotoImage
 from ttkbootstrap.constants import *
@@ -37,18 +32,45 @@ class Controller():
             port = device.device 
             sensor_row = ttk.Frame(self.view.ss_frame, padding=5, bootstyle="dark")
             sensor_row.pack(fill=X, expand=YES,  pady=5)
+
             label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
                         if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
             _label = ttk.Label(sensor_row, text=label_text, width= 10, bootstyle="inverse-dark")
+            _label.config(foreground="gray")
             _label.pack(side=LEFT)
-            _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port = port : self.connect_sensor(port), bootstyle="outline-primary")
+
+            _calibration_button = ttk.Button(sensor_row, text='Calibrate', command = lambda port=port : self.calibrate_sensor(port), bootstyle="outline-secondary")
+            _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port=port, label=_label, cal_button=_calibration_button: self.connect_sensor(port, label,cal_button), bootstyle="outline-primary")
             _connect_button.pack(side=LEFT, padx=(15, 0))
-            _calibration_button = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port : self.calibrate_sensor(port), bootstyle="outline-secondary")
+            # _calibration_button defined above to pass it to _connect_button
             _calibration_button.pack(padx=(15, 0))
+            _calibration_button.configure(state=DISABLED)
     
-    def connect_sensor(self, port):
+    def connect_sensor(self, port, label, cal_button):
         self.model.start_serial_port(port)
-        Thread(target = lambda fig = self.view.figure, canvas = self.view.figure_canvas: self.update_graph(fig,canvas)).start()
+        # Activate the label and the calibration button
+        label.config(foreground="white")
+        cal_button.configure(state=ACTIVE)
+        # Create a frame and add it to the notebook widget
+        plot_frame = ttk.Frame(self.view.notebook)
+        self.view.notebook.add(plot_frame, text=port)
+        # Place the meter on the frame
+        _meter = ttk.Meter(
+            master=plot_frame,
+            metersize=150,
+            amountused=None,
+            subtext="Battery level",
+            bootstyle="light",
+            interactive=False)
+        _meter.pack(pady=10)
+        # Create the figure
+        figure = Figure(figsize=(15, 8), dpi=100)
+        figure.patch.set_facecolor('#222222')
+        # Create the FigureCanvasTkAgg widget and 
+        # place it in the corresponding frame
+        figure_canvas = FigureCanvasTkAgg(figure, plot_frame)
+        figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
+        Thread(target = lambda fig=figure, canvas=figure_canvas, port=port, meter=_meter: self.update_graph(fig,canvas, port, meter)).start()
 
     def calibrate_sensor(self, port):
         # TODO: send calibration command to sensors 
@@ -66,15 +88,15 @@ class Controller():
         print(f"Calibrating {port}")
     
     
-    def update_graph(self, figure, canvas):
+    def update_graph(self, figure, canvas, port, meter):
         ports = self.model.ports
         if len(ports) > 0: 
-            port = list(ports.keys())[0]
+            #port = list(ports.keys())[0]
             _grey_rgb = (197/255, 202/255, 208/255)
             _font = {'family': 'sans-serif',
                         'color':  'white',
                         'weight': 'normal',
-                        'size': 8,
+                        'size': 10,
                 }
 
             # Create the axes
@@ -97,6 +119,9 @@ class Controller():
             while True: 
                 # Retrieve the data to be plotted
                 data = ports[port].update_plot_data()
+                battery = ports[port].update_batt_lvl()
+                # Update the meter values
+                meter.configure(amountused=battery)
                 # Clear the graph to draw new data
                 # IMU 
                 acc_axes.cla()
@@ -104,9 +129,9 @@ class Controller():
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
                 acc_axes.set_facecolor('#222222')
-                acc_axes.plot(range(25), data[0,:], marker='o', label='x')
-                acc_axes.plot(range(25), data[1,:], marker='o', label='y')
-                acc_axes.plot(range(25), data[2,:], marker='o', label='z')
+                acc_axes.plot(range(25), data[0,:], marker='o', label='x', color='#2A476C')
+                acc_axes.plot(range(25), data[1,:], marker='o', label='y', color='#18B179')
+                acc_axes.plot(range(25), data[2,:], marker='o', label='z', color='#825194')
                 acc_axes.legend()
 
                 # Gyroscope
@@ -115,9 +140,9 @@ class Controller():
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
                 gyr_axes.set_facecolor('#222222')
-                gyr_axes.plot(range(25), data[3,:], marker='o', label='x')
-                gyr_axes.plot(range(25), data[4,:], marker='o', label='y')
-                gyr_axes.plot(range(25), data[5,:], marker='o', label='z')
+                gyr_axes.plot(range(25), data[3,:], marker='o', label='x', color='#2A476C')
+                gyr_axes.plot(range(25), data[4,:], marker='o', label='y', color='#18B179')
+                gyr_axes.plot(range(25), data[5,:], marker='o', label='z', color='#825194')
                 gyr_axes.legend()
 
                 # Magnetometer  
@@ -126,9 +151,9 @@ class Controller():
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
                 mag_axes.set_facecolor('#222222')
-                mag_axes.plot(range(25), data[6,:], marker='o', label='x')
-                mag_axes.plot(range(25), data[7,:], marker='o', label='y')
-                mag_axes.plot(range(25), data[8,:], marker='o', label='z')
+                mag_axes.plot(range(25), data[6,:], marker='o', label='x', color='#2A476C')
+                mag_axes.plot(range(25), data[7,:], marker='o', label='y', color='#18B179')
+                mag_axes.plot(range(25), data[8,:], marker='o', label='z', color='#825194')
                 mag_axes.legend()
 
                 # Finally, re-draw the canvas
@@ -151,15 +176,38 @@ class Controller():
             self.recording = False
             for port in ports.keys():
                 ports[port].stop_recording()
-
-        # NOTE: debug purposes only
-        #for port in self.model.spm.ports_list[:3]:
-        #    self.sensors_lables[port.device].config(foreground="gray")
-        #    self.calibration_buttons[port.device].configure(state=DISABLED)
     
     def save_file(self, path, filename):
-        ports = self.model.ports
-        if len(ports) > 0: 
+        self.model.write_file(path, filename)
+
+class Model():
+    """
+    The model act as a serial port manager: mantains an array of processes, 
+    each controlling a SerialPort object for all connected sensors. 
+    Each SerialPort manages its messages (transmitting / receiving); the
+    SerialPortManager implements the interrupt (e.g., when closing the program)
+    """
+    def __init__(self, spm):
+        self.ports_list = [port for port in list_ports.comports()]
+        self.ports = {}
+        self.spm = spm 
+
+    def start_serial_port(self, port):
+        try:
+            s = SerialSubscriber()
+            serial_port = self.spm.SerialPort(port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=s)
+            #start_port(port)
+            serial_port.write_to_serial('v')
+            p = Process(target=serial_port.packets_stream)
+            print("Starting process")
+            p.start()
+            self.ports[port] = serial_port  
+        except Exception as e: 
+            print(f"Couldn't connect to serial port: {port}")
+            print(e)
+    
+    def write_file(self, path, filename):
+        if len(self.ports) > 0: 
             if not path or not filename:
                 # Pop-up warning window
                 top = ttk.Toplevel()
@@ -197,10 +245,10 @@ class Controller():
                 top.grab_set()
             
             else: 
-                for port in ports.keys():
+                for port in self.ports.keys():
                     np.savetxt(
                         f"{path}/{filename}-{port.split('/')[-1]}.csv", 
-                        ports[port].listener[0].queue[1:], 
+                        self.ports[port].listener.queue[1:], 
                         delimiter=',', 
                         header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z", 
                         comments="")
@@ -234,32 +282,6 @@ class Controller():
             but.pack(expand = NO)   
             top.transient()
             top.grab_set()
-
-class Model():
-    """
-    The model act as a serial port manager: mantains an array of processes, 
-    each controlling a SerialPort object for all connected sensors. 
-    Each SerialPort manages its messages (transmitting / receiving); the
-    SerialPortManager implements the interrupt (e.g., when closing the program)
-    """
-    def __init__(self, spm):
-        self.ports_list = [port for port in list_ports.comports()]
-        self.ports = {}
-        self.spm = spm 
-
-    def start_serial_port(self, port):
-        try:
-            s = SerialSubscriber()
-            serial_port = self.spm.SerialPort(port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=s)
-            #start_port(port)
-            serial_port.write_to_serial('v')
-            p = Process(target=serial_port.packets_stream)
-            print("Starting process")
-            p.start()
-            self.ports[port] = serial_port  
-        except Exception as e: 
-            print(f"Couldn't connect to serial port: {port}")
-            print(e)
 
 
 class View(ttk.Frame):
@@ -324,26 +346,28 @@ class View(ttk.Frame):
         #Label container 
         labels_container = ttk.Frame(self.outer_l_column, bootstyle="dark", padding=25)
         labels_container.pack(side=BOTTOM, fill=BOTH, expand=NO)
-        iss = ttk.Label(labels_container, bootstyle="inverse-dark", image='iss').pack(fill=X, pady=5, side=RIGHT)
-        asi = ttk.Label(labels_container, bootstyle="inverse-dark", image='asi').pack(fill=X, pady=5, side=RIGHT)
+        iss = ttk.Label(labels_container, bootstyle="inverse-dark", image='iss').pack(fill=X, side=RIGHT)
+        asi = ttk.Label(labels_container, bootstyle="inverse-dark", image='asi').pack(fill=X, side=RIGHT)
         #  ----------------------------------------------------------------
         # Plots section 
-        outer_r_column = ttk.Frame(self, bootstyle="dark")
-        outer_r_column.pack(fill=BOTH, expand=YES, side=RIGHT)
+        outer_r_column = ttk.Frame(self, bootstyle="dark", padding=15)
+        outer_r_column.pack(fill=BOTH, expand=YES, side=TOP)
+        # Exercise classification:
+        exercise_label_frame = ttk.Frame(self, bootstyle="dark")
+        exercise_label_frame.pack(fill=BOTH, expand=NO)
+
+        data_label = ttk.Label(exercise_label_frame, text="Exercise execution classification:", bootstyle="inverse-dark", font="-size 18 -weight bold").pack(pady=5, side=TOP)
+        self.classification = ttk.Label(exercise_label_frame, bootstyle="inverse-dark", text="No exercise detected", font="-size 16")
+        self.classification.pack(pady=5, side=BOTTOM)
 
         self.plot_frame = ttk.Frame(outer_r_column, padding = 25)
-        self.plot_frame.pack(fill=BOTH, expand=YES, padx=8)
+        self.plot_frame.pack(fill=BOTH, expand=YES, side=BOTTOM)
 
         # Data label
-        data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots", font="-size 18 -weight bold").pack(fill=X)
-       
-        # Create the figure
-        self.figure = Figure(figsize=(15, 8), dpi=100)
-        self.figure.patch.set_facecolor('#222222')
-        # Create the FigureCanvasTkAgg widget and 
-        # place it in the corresponding frame
-        self.figure_canvas = FigureCanvasTkAgg(self.figure, self.plot_frame)
-        self.figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
+        data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots:", font="-size 18 -weight bold").pack(fill=X)
+        self.notebook = ttk.Notebook(self.plot_frame, padding=15)
+        self.notebook.pack(fill=BOTH, expand=YES)
+
     
     def set_controller(self, controller):
         self.controller = controller

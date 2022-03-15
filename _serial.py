@@ -42,6 +42,9 @@ class SerialPort(serial.Serial):
     def update_plot_data(self):
         return self.listener.plot_data
     
+    def update_batt_lvl(self):
+        return self.listener.batt_level
+    
     def get_listener_queue(self):
         return self.listener.queue
     
@@ -88,8 +91,8 @@ class SerialPort(serial.Serial):
                     if len(b)>0:
                         h = b[0]
                     count += 1
-                except: 
-                    print("Couldn't read byte")
+                except Exception as e: 
+                    print(f"Couldn't read from serial: {e}")
             # Unpack the bytes received in
             # a proper data structure
             if len(raw_data)==packet_length:
@@ -136,16 +139,18 @@ class SerialSubscriber():
     that is updates at each incoming packet 
     """
     def __init__(self):
-        self.batt_level = 0.0
+        self.total_lvl = 0.0
+        self.batt_level = 0
         self.n_batt_updates = 0
         self.is_recording = False
         self.plot_data = np.zeros((9,25), dtype=np.float)  # Keeping the last 25 values to be plotted
         self.queue = np.empty((1,9), dtype=np.float) 
 
     def compute_battery_level(self, new_lvl):
-        self.batt_level += new_lvl
+        self.total_lvl += new_lvl
         self.n_batt_updates += 1
-        print(f"Battery percentage: {int(self.batt_level / self.n_batt_updates)} %")
+        self.batt_level = int(self.total_lvl / self.n_batt_updates)
+        #print(f"Battery percentage: {self.batt_level}%")
 
     def update(self, data):
         # Sensitivity values from Laura's code
@@ -216,7 +221,7 @@ class SerialPortManager(BaseManager): pass
 class SerialProcessProxy(NamespaceProxy):
     # __dunder__ methods of base NamespaceProxy, need to be exposed
     # in addition to the desired methods
-    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'write_to_serial', 'update_plot_data') # 'get_listener_data', 'set_port', 'ports', 'listeners')
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'write_to_serial', 'update_plot_data', 'update_batt_lvl') # 'get_listener_data', 'set_port', 'ports', 'listeners')
 
     def packets_stream(self):
         callmethod = object.__getattribute__(self, '_callmethod')
@@ -233,6 +238,9 @@ class SerialProcessProxy(NamespaceProxy):
     def update_plot_data(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('update_plot_data')
+    def update_batt_lvl(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('update_batt_lvl')
 
 
 SerialPortManager.register('SerialPort', SerialPort, SerialProcessProxy)
