@@ -3,12 +3,9 @@
 # while the controller detects actions sent by the view and chooses the best strategy 
 # See also: https://github.com/facebook/flux/tree/520a60c18aa3e9af59710d45cd37b9a6894a7bce/examples/flux-concepts
 
-from turtle import listen
 import ttkbootstrap as ttk
 from tkinter import PhotoImage
-from ttkbootstrap import utility
 from ttkbootstrap.constants import *
-from ttkbootstrap.style import Bootstyle
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -38,13 +35,13 @@ class Controller():
         for device in self.model.ports_list:
         #for device in self.model.spm.ports_list:
             port = device.device 
-            sensor_row = ttk.Frame(self.view.ss_frame, padding = 5)
-            sensor_row.pack(fill=X, expand=YES)
+            sensor_row = ttk.Frame(self.view.ss_frame, padding=5, bootstyle="dark")
+            sensor_row.pack(fill=X, expand=YES,  pady=5)
             label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
                         if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
-            _label = ttk.Label(sensor_row, text=label_text, width=15)
+            _label = ttk.Label(sensor_row, text=label_text, width= 10, bootstyle="inverse-dark")
             _label.pack(side=LEFT)
-            _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port = port : self.connect_sensor(port), bootstyle="primary")
+            _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port = port : self.connect_sensor(port), bootstyle="outline-primary")
             _connect_button.pack(side=LEFT, padx=(15, 0))
             _calibration_button = ttk.Button(sensor_row, text='Calibrate', command = lambda port = port : self.calibrate_sensor(port), bootstyle="outline-secondary")
             _calibration_button.pack(padx=(15, 0))
@@ -75,9 +72,9 @@ class Controller():
             port = list(ports.keys())[0]
             _grey_rgb = (197/255, 202/255, 208/255)
             _font = {'family': 'sans-serif',
-                        'color':  'black',
+                        'color':  'white',
                         'weight': 'normal',
-                        'size': 10,
+                        'size': 8,
                 }
 
             # Create the axes
@@ -106,6 +103,7 @@ class Controller():
                 acc_axes.set_ylim([-5,5])
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
+                acc_axes.set_facecolor('#222222')
                 acc_axes.plot(range(25), data[0,:], marker='o', label='x')
                 acc_axes.plot(range(25), data[1,:], marker='o', label='y')
                 acc_axes.plot(range(25), data[2,:], marker='o', label='z')
@@ -116,6 +114,7 @@ class Controller():
                 gyr_axes.set_ylim([-10,10])
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
+                gyr_axes.set_facecolor('#222222')
                 gyr_axes.plot(range(25), data[3,:], marker='o', label='x')
                 gyr_axes.plot(range(25), data[4,:], marker='o', label='y')
                 gyr_axes.plot(range(25), data[5,:], marker='o', label='z')
@@ -126,6 +125,7 @@ class Controller():
                 mag_axes.set_ylim([-20,20])
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
+                mag_axes.set_facecolor('#222222')
                 mag_axes.plot(range(25), data[6,:], marker='o', label='x')
                 mag_axes.plot(range(25), data[7,:], marker='o', label='y')
                 mag_axes.plot(range(25), data[8,:], marker='o', label='z')
@@ -156,79 +156,84 @@ class Controller():
         #for port in self.model.spm.ports_list[:3]:
         #    self.sensors_lables[port.device].config(foreground="gray")
         #    self.calibration_buttons[port.device].configure(state=DISABLED)
-    """
-    def save_file(self, path, filename, model):
-        ports = model.spm.ports
-        if not path or not filename:
-            # Pop-up warning window
-            top = ttk.Toplevel()
-            top.title('WARNING')
+    
+    def save_file(self, path, filename):
+        ports = self.model.ports
+        if len(ports) > 0: 
+            if not path or not filename:
+                # Pop-up warning window
+                top = ttk.Toplevel()
+                top.title('WARNING')
 
-            _frame = ttk.Frame(top, padding = 25)
-            _frame.pack(expand = NO, side=TOP)
-            label = ttk.Label(_frame, text = "Please, fill the required fields!")
-            label.pack(expand = NO)
+                _frame = ttk.Frame(top, padding = 25)
+                _frame.pack(expand = NO, side=TOP)
+                label = ttk.Label(_frame, text = "Please, fill the required fields!")
+                label.pack(expand = NO)
 
-            _but = ttk.Frame(top, padding = 15)
-            _but.pack(expand = NO, side=TOP)
-            but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle="outline-warning")
-            but.pack(expand = NO)   
+                _but = ttk.Frame(top, padding = 15)
+                _but.pack(expand = NO, side=TOP)
+                but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle="outline-warning")
+                but.pack(expand = NO)   
 
-            top.transient()
-            top.grab_set()
+                top.transient()
+                top.grab_set()
 
-        elif not os.path.isdir(path): 
+            elif not os.path.isdir(path): 
+                
+                top = ttk.Toplevel()
+                top.title("WARNING")
+
+                _frame = ttk.Frame(top, padding = 25)
+                _frame.pack(expand = NO, side=TOP)
+                label = ttk.Label(_frame, text = "Directory not found!")
+                label.pack(expand = NO)
+
+                _but = ttk.Frame(top, padding = 15)
+                _but.pack(expand = NO, side=TOP)
+                but = ttk.Button(_but, text = 'Quit', command = top.destroy, bootstyle="outline-warning")
+                but.pack(expand = NO)   
+
+                top.transient()
+                top.grab_set()
             
+            else: 
+                for port in ports.keys():
+                    np.savetxt(
+                        f"{path}/{filename}-{port.split('/')[-1]}.csv", 
+                        ports[port].listener[0].queue[1:], 
+                        delimiter=',', 
+                        header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z", 
+                        comments="")
+
+                top = ttk.Toplevel()
+                top.title('')
+
+                _frame = ttk.Frame(top, padding = 25)
+                _frame.pack(expand = NO, side=TOP)
+                label = ttk.Label(_frame, text = f"Data saved in {path}/{filename}-{port.split('/')[-1]}.csv", \
+                                                wraplength=220, anchor=ttk.NW, justify=ttk.LEFT)
+                label.pack(expand = NO)
+
+                _but = ttk.Frame(top, padding = 15)
+                _but.pack(expand = NO, side=TOP)
+                but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle = "outline-success")
+                but.pack(expand = NO)   
+
+                top.transient()
+                top.grab_set()
+        else: 
             top = ttk.Toplevel()
             top.title("WARNING")
-
             _frame = ttk.Frame(top, padding = 25)
             _frame.pack(expand = NO, side=TOP)
-            label = ttk.Label(_frame, text = "Directory not found!")
+            label = ttk.Label(_frame, text = "No active port to store data from.")
             label.pack(expand = NO)
-
             _but = ttk.Frame(top, padding = 15)
             _but.pack(expand = NO, side=TOP)
             but = ttk.Button(_but, text = 'Quit', command = top.destroy, bootstyle="outline-warning")
             but.pack(expand = NO)   
-
             top.transient()
             top.grab_set()
-           
-        else: 
-            for port in ports.keys():
-                np.savetxt(
-                    f"{path}/{filename}-{port.split('/')[-1]}.csv", 
-                    ports[port].listener[0].queue[1:], 
-                    delimiter=',', 
-                    header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z", 
-                    comments="")     
-
-            #with open(path + "/" + filename + ".csv", mode='w', newline="") as csv_file:
-            #    nomicolonne = ['a', 'b', 'c']
-            #    writer = csv.DictWriter(csv_file, fieldnames=nomicolonne)
-            #    writer.writeheader()
-            #    writer.writerow({'a': 'ciao', 'b': 'come', 'c': 'stai?'})
-            #    writer.writerow({'a': 'hello', 'b': 'how', 'c': 'are you?'})
-            #print(f"Data saved in {path}/{filename}-{port.split('/')[-1]}.csv")
-
-            top = ttk.Toplevel()
-            top.title('')
-
-            _frame = ttk.Frame(top, padding = 25)
-            _frame.pack(expand = NO, side=TOP)
-            label = ttk.Label(_frame, text = f"Data saved in {path}/{filename}-{port.split('/')[-1]}.csv", \
-                                            wraplength=220, anchor=ttk.NW, justify=ttk.LEFT)
-            label.pack(expand = NO)
-
-            _but = ttk.Frame(top, padding = 15)
-            _but.pack(expand = NO, side=TOP)
-            but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle = "outline-success")
-            but.pack(expand = NO)   
-
-            top.transient()
-            top.grab_set()
-    """
 
 class Model():
     """
@@ -241,56 +246,7 @@ class Model():
         self.ports_list = [port for port in list_ports.comports()]
         self.ports = {}
         self.spm = spm 
-        """ 
-        def load_ports(self, virtual_ports=None):
-        # Initializes the SerialPort objects array
-        if virtual_ports is None:
-            ports = self.ports_list
-        for port in ports[-3:]:
-            try:
-                if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
-                    # NOTE: timeout increased to 2 - was 1.5 - to avoid serial exceptions
-                    ser = SerialPort(port=port.device, baudrate=57600, timeout=None, write_timeout=0)
-                else:
-                    #print("Connecting to virtual port(s)")
-                    ser = SerialPort(port=port, baudrate=57600, timeout=1.5, write_timeout=0)
-                if ser.is_open:
-                    print(f"Adding subscriber to {ser.name}")
-                    s = SerialSubscriber()
-                    ser.subscribe(s)
-                    print(f"Subscriber added to: {(ser.name)}")
-                    self.ports[(ser.name)] = ser
-            except: 
-                print(f"Could not connect to port: {port}")
 
-        return self.ports
-
-
-
-    
-        ports = spm.load_ports()
-    
-        # Initialize all the ports found from the SPM
-        sensors_used = 0
-        sensors_names = []
-        for port in ports.keys():
-            sensors_used += 1
-            # Sending the first letter to have the port name 
-            print(f"Writing to port: {port}")
-            ports[port].write_to_serial('v')
-            time.sleep(2)
-            sensors_names.append(ports[port].check_port())
-            
-        if len(sensors_names) == sensors_used: 
-            print("All sensors initialized successfully")
-            #for i, port in enumerate(ports.keys()):
-                # Serial threads have to start before the application 
-                # NOTE: this will continuously without the GUI interrupting them
-                # The subscriber will be the one in charge to decide whether to save the data or not  
-            #    processes.append(Thread(target=ports[port].packets_stream))
-            #    processes[i].start()
-        
-        """
     def start_serial_port(self, port):
         try:
             s = SerialSubscriber()
@@ -304,33 +260,11 @@ class Model():
         except Exception as e: 
             print(f"Couldn't connect to serial port: {port}")
             print(e)
-        
-    """
-    def setup_port(self, port):
-        try:
-            s = SerialSubscriber()
-            ser = SerialPort(port, subscriber=s)
-            if ser.is_open:
-                #print("Initializing port subscriber")
-                print(f"Adding port to SPM")
-                self.spm.set_port(ser)
-                #listener = SerialSubscriber()
-                #ser.subscribe(listener)
-                #print(f"Adding port to SPM")
-                #self.spm.set_port(ser, listener)
-                print("Port added to SPM")
-                # Bootstrapping the Arduino firmware loop
-                ser.write_to_serial('v')
-            ser.packets_stream()
-        except Exception as e: 
-            print(f"Could not connect to port: {port}, {e}")
-    """
-
 
 
 class View(ttk.Frame):
     def __init__(self, master):
-        super().__init__(master, padding=15, bootstyle="light")
+        super().__init__(master, padding=15, bootstyle="dark")
         self.pack(fill=BOTH, expand=YES)
         self.controller = None
         # Icons and images
@@ -342,22 +276,22 @@ class View(ttk.Frame):
         #  ----------------------------------------------------------------
         #  ----------------------------------------------------------------
         # Left column header container 
-        self.outer_l_column = ttk.Frame(self, bootstyle="light")
+        self.outer_l_column = ttk.Frame(self, bootstyle="dark")
         self.outer_l_column.pack(fill=Y, expand=NO, side=LEFT)
         #  ----------------------------------------------------------------
         # SpaceSensor labelled frame
-        self.ss_frame = ttk.Frame(self.outer_l_column, padding=25)
-        self.ss_frame.pack()
-        ss_lframe_label = ttk.Label(self.ss_frame, text="Available SpaceSens sensors:", font="-size 18 -weight bold")
-        ss_lframe_label.pack()
+        self.ss_frame = ttk.Frame(self.outer_l_column, bootstyle="dark", padding=10)
+        self.ss_frame.pack(pady=10)
+        ss_lframe_label = ttk.Label(self.ss_frame, text="Available SpaceSens sensors:", font="-size 18 -weight bold", bootstyle="inverse-dark")
+        ss_lframe_label.pack(padx=10)
         # Sensors-related button 
-        bl_button_frame = ttk.Frame(self.outer_l_column, padding=25)
+        bl_button_frame = ttk.Frame(self.outer_l_column, padding=25, bootstyle="dark")
         bl_button_frame.pack()
-        self.bl_button = ttk.Button(self.ss_frame, text="Start recording", command=self.recording_button_pressed, width=25,  bootstyle="success")
-        self.bl_button.pack(fill=X, side=BOTTOM, expand=NO)
+        self.bl_button = ttk.Button(self.ss_frame, text="Start recording", command=self.recording_button_pressed, width=15,  bootstyle="success")
+        self.bl_button.pack(fill=X, side=BOTTOM, expand=NO, pady=7)
         #  ----------------------------------------------------------------
         # File saving 
-        fs_frame = ttk.Frame(self.outer_l_column, padding=25)
+        fs_frame = ttk.Frame(self.outer_l_column, padding=15)
         fs_frame.pack(side=TOP, expand=YES)
         fs_label = ttk.Label(fs_frame, text= "Store acquisition data:", font="-size 18 -weight bold")
         fs_label.pack()
@@ -384,17 +318,17 @@ class View(ttk.Frame):
         entry2.insert(END,"data")
         entry2.pack(side=BOTTOM, expand=YES, pady=5)
         # Save button
-        #save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get(),self.model))
-        #save_button.pack()
+        save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get()))
+        save_button.pack()
         
         #Label container 
-        labels_container = ttk.Frame(self.outer_l_column, bootstyle="light", padding=25)
+        labels_container = ttk.Frame(self.outer_l_column, bootstyle="dark", padding=25)
         labels_container.pack(side=BOTTOM, fill=BOTH, expand=NO)
-        iss = ttk.Label(labels_container, bootstyle="inverse-light", image='iss').pack(fill=X, pady=5, side=RIGHT)
-        asi = ttk.Label(labels_container, bootstyle="inverse-light", image='asi').pack(fill=X, pady=5, side=RIGHT)
+        iss = ttk.Label(labels_container, bootstyle="inverse-dark", image='iss').pack(fill=X, pady=5, side=RIGHT)
+        asi = ttk.Label(labels_container, bootstyle="inverse-dark", image='asi').pack(fill=X, pady=5, side=RIGHT)
         #  ----------------------------------------------------------------
         # Plots section 
-        outer_r_column = ttk.Frame(self, bootstyle="light")
+        outer_r_column = ttk.Frame(self, bootstyle="dark")
         outer_r_column.pack(fill=BOTH, expand=YES, side=RIGHT)
 
         self.plot_frame = ttk.Frame(outer_r_column, padding = 25)
@@ -404,7 +338,8 @@ class View(ttk.Frame):
         data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots", font="-size 18 -weight bold").pack(fill=X)
        
         # Create the figure
-        self.figure = Figure(figsize=(15, 8), dpi=150)
+        self.figure = Figure(figsize=(15, 8), dpi=100)
+        self.figure.patch.set_facecolor('#222222')
         # Create the FigureCanvasTkAgg widget and 
         # place it in the corresponding frame
         self.figure_canvas = FigureCanvasTkAgg(self.figure, self.plot_frame)
@@ -419,6 +354,10 @@ class View(ttk.Frame):
     def recording_button_pressed(self):
         if self.controller:
             self.controller.record()
+    
+    def saved_button_pressed(self, directory, filename):
+        if self.controller:
+            self.controller.save_file(directory, filename)
 
     
 

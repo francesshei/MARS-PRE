@@ -45,7 +45,7 @@ class App(ttk.Window):
     def __init__(self):
         super().__init__(
         title="MARS-PRE",
-        themename="flatly",
+        themename="darkly",
         size=(350, 450),
         resizable=(True, True))
 
