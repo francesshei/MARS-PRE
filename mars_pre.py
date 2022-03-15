@@ -1,40 +1,27 @@
-from _serial import SerialPortManager, SerialPort
-import time
-from threading import Thread
-from _gui import MarsPreView
+from _gui import Model, View, Controller
 import ttkbootstrap as ttk
-import threading
+from _serial import SerialPortManager
 
-if __name__ == '__main__':
-    # Initialize a virtual serial port
-    # Load a SPM, connect a subscriber to the port
-    spm = SerialPortManager()
-    ports = spm.load_ports()
-    
-    # Initialize all the ports found from the SPM
-    # (following Laura's code)
-    for port in ports.keys():
-        # Sending the first letter to have the port name 
-        print(f"Writing to port: {port}")
-        ports[port].write_to_serial('v')
-        time.sleep(2)
-        print(ports[port].check_port())
-
-    for port in ports.keys():
-        # Serial threads have to start before the application 
-        # NOTE: this will continuously without the GUI interrupting them
-        # The subscriber will be the one in charge to decide whether to save the data or not  
-        thread = Thread(target=ports[port].packets_stream)
-        thread.start()
-    
-    app = ttk.Window(
+class App(ttk.Window):
+    def __init__(self):
+        super().__init__(
         title="MARS-PRE",
-        themename="flatly",
+        themename="darkly",
         size=(350, 450),
-        resizable=(True, True),
-    )
-    MarsPreView(app, spm=spm)
-    app_thread = threading.Thread(target=app.mainloop())
-    app_thread.start()
-    app.mainloop()
+        resizable=(True, True))
 
+        # Create a model
+        _spm = SerialPortManager()
+        _spm.start()
+        model = Model(_spm)
+        # Create a view and place it on the root window
+        view = View(self)
+        # Create a controller
+        controller = Controller(view, model)
+        # Set the controller to the view
+        view.set_controller(controller)
+
+# Start the application
+if __name__ == '__main__':
+    app = App()
+    app.mainloop()

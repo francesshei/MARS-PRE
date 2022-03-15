@@ -1,10 +1,9 @@
 import serial
-from serial.tools import list_ports
-import asyncio
+#from serial.tools import list_ports
 import struct
-import sys
 import numpy as np
 import time
+from multiprocessing.managers import BaseManager, NamespaceProxy
 
 class SerialPort(serial.Serial):
     """
@@ -12,23 +11,42 @@ class SerialPort(serial.Serial):
     Each port has a single subscriber connected to it; the class write/read from its serial port 
     and notify its subscriber when serial data is received.
     """
-    # PUBLISHER-RELATED FUNCTIONS: to add listeners (subscribers) and 
-    # notify them when new data is received.
-    listener = []
+    def __init__(self, port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=None):
+        super().__init__(port, baudrate, timeout=timeout, write_timeout=write_timeout)
+        self.listener = subscriber
+    # PUBLISHER-RELATED FUNCTIONS: to add listeners (subscribers), 
+    # notify them when new data is received and get their data.
     def subscribe(self, subscriber):
-        self.listener.append(subscriber)
+        self.listener = subscriber
 
     def notify(self, data):
         """
         Notify the subscriber (listener) that data has been received
         """
-        # NOTE: we're accessing the first elements of the listeners list
-        # as each serial port shall have one listener only.
-        # If data is a single 'int' then it's the battery level
-        if isinstance(data,int): 
-             self.listener[0].compute_battery_level(data)  
-        else: 
-            self.listener[0].update(data)
+        # If the port has an active subscriber
+        if self.listener:
+            # If data is a single 'int' then it's the battery level
+            if isinstance(data,int): 
+                self.listener.compute_battery_level(data)  
+            else: 
+                self.listener.update(data)
+    
+    def start_recording(self):
+        if self.listener:
+            self.listener.is_recording = True
+
+    def stop_recording(self):
+        if self.listener:
+            self.listener.is_recording = False
+
+    def update_plot_data(self):
+        return self.listener.plot_data
+    
+    def update_batt_lvl(self):
+        return self.listener.batt_level
+    
+    def get_listener_queue(self):
+        return self.listener.queue
     
     # SERIAL-RELATED FUNCTIONS: read/write from BT port 
     def packets_stream(self, packet_length=27, batt_message_length=2):
@@ -38,7 +56,7 @@ class SerialPort(serial.Serial):
         Returns (acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z, mag_x, mag_y, mag_z, quat_0, quat_1, quat_2, quat_3)
         """
         # Empties the buffer from the name of the sensor read by default
-        self.readline()
+        #self.readline()
         # Initializing quantities needed for serial reading
         b = b''
         h = t = count = 0 
@@ -67,11 +85,14 @@ class SerialPort(serial.Serial):
             # Once found, read until the packet tail (0xC0)
             # or until the end of the expected packet length
             while h != 0xc0 or count <= packet_length:
-                b = self.read(1)
-                raw_data.append(b)
-                if len(b)>0:
-                    h = b[0]
-                count += 1
+                try: 
+                    b = self.read(1)
+                    raw_data.append(b)
+                    if len(b)>0:
+                        h = b[0]
+                    count += 1
+                except Exception as e: 
+                    print(f"Couldn't read from serial: {e}")
             # Unpack the bytes received in
             # a proper data structure
             if len(raw_data)==packet_length:
@@ -118,19 +139,20 @@ class SerialSubscriber():
     that is updates at each incoming packet 
     """
     def __init__(self):
-        self.batt_level = 0.0
+        self.total_lvl = 0.0
+        self.batt_level = 0
         self.n_batt_updates = 0
         self.is_recording = False
         self.plot_data = np.zeros((9,25), dtype=np.float)  # Keeping the last 25 values to be plotted
         self.queue = np.empty((1,9), dtype=np.float) 
 
     def compute_battery_level(self, new_lvl):
-        self.batt_level += new_lvl
+        self.total_lvl += new_lvl
         self.n_batt_updates += 1
-        print(f"Battery percentage: {int(self.batt_level / self.n_batt_updates)} %")
+        self.batt_level = int(self.total_lvl / self.n_batt_updates)
+        #print(f"Battery percentage: {self.batt_level}%")
 
     def update(self, data):
-        # TODO: add packet processing here
         # Sensitivity values from Laura's code
         acc_sensitivity = (2.0 / 32768.0)  
         gyr_sensitivity = (250.0 / 32768.0)
@@ -193,52 +215,35 @@ class SerialSubscriber():
         self.plot_data[:3, -1] = acc_array
         self.plot_data[3:6, -1] = gyro_array
         self.plot_data[6:9, -1] = mag_array
-    
 
-class SerialPortManager():
-    """
-    Adapted from Serial Port Design Pattern. Mantains an array of SerialPort objects. 
-    Each SerialPort manages its messages (transmitting / receiving); the
-    SerialPortManager implements the interrupt (e.g., when closing the program)
-    """
+class SerialPortManager(BaseManager): pass
 
-    def __init__(self):
-        # Reads list of all the ports detected in a list 
-        self.ports_list = [port for port in list_ports.comports()]
-        self.ports = {}
-    
-    def load_ports(self, virtual_ports=None):
-        # Initializes the SerialPort objects array
-        if virtual_ports is None:
-            ports = self.ports_list
-        for port in ports[2:3]:
-            try:
-                if virtual_ports is None and port.device != "/dev/cu.Bluetooth-Incoming-Port":
-                    # NOTE: timeout increased to 2 - was 1.5 - to avoid serial exceptions
-                    ser = SerialPort(port=port.device, baudrate=57600, timeout=2.5, write_timeout=0)
-                else:
-                    #print("Connecting to virtual port(s)")
-                    ser = SerialPort(port=port, baudrate=57600, timeout=1.5, write_timeout=0)
-                if ser.is_open:
-                    print(f"Adding subscriber to {ser.name}")
-                    s = SerialSubscriber()
-                    ser.subscribe(s)
-                    print(f"Subscriber added to: {(ser.name)}")
-                    self.ports[(ser.name)] = ser
-            except: 
-                print(f"Could not connect to port: {port}")
+class SerialProcessProxy(NamespaceProxy):
+    # __dunder__ methods of base NamespaceProxy, need to be exposed
+    # in addition to the desired methods
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'write_to_serial', 'update_plot_data', 'update_batt_lvl') # 'get_listener_data', 'set_port', 'ports', 'listeners')
 
-        return self.ports
+    def packets_stream(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('packets_stream')
+    def start_recording(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('start_recording')
+    def stop_recording(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('stop_recording')
+    def write_to_serial(self, message):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('write_to_serial',(message,))
+    def update_plot_data(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('update_plot_data')
+    def update_batt_lvl(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('update_batt_lvl')
 
-    def interrupt_ports(self):
-        pass
-    
-    def test_process(self):
-        # NOTE: debug purposes only
-        i = 0 
-        while i < 100:
-            print(f"Process running: {i}")
-            i += 1
+
+SerialPortManager.register('SerialPort', SerialPort, SerialProcessProxy)
 
 
 
