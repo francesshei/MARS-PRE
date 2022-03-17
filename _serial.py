@@ -139,11 +139,12 @@ class SerialSubscriber():
     that is updates at each incoming packet 
     """
     def __init__(self):
+        n_samples = 1000
         self.total_lvl = 0.0
         self.batt_level = 0
         self.n_batt_updates = 0
         self.is_recording = False
-        self.plot_data = np.zeros((9,25), dtype=np.float)  # Keeping the last 25 values to be plotted
+        self.plot_data = np.zeros((9,n_samples), dtype=np.float)  # Keeping the last 25 values to be plotted
         self.queue = np.empty((1,9), dtype=np.float) 
 
     def compute_battery_level(self, new_lvl):
@@ -164,6 +165,7 @@ class SerialSubscriber():
 
         # Update only stores packets in the queue when the flag (that can be set false by GUI) allows it    
         if self.is_recording:
+            # TODO: use time to synch data acquired from the different sensors
             delta_time = time.time() 
             queue_item = np.concatenate((acc_array, gyro_array, mag_array), axis=None)
             self.queue = np.vstack((self.queue, queue_item))

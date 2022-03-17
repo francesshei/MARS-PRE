@@ -7,7 +7,7 @@ class App(ttk.Window):
         super().__init__(
         title="MARS-PRE",
         themename="darkly",
-        size=(350, 450),
+        size=(1100, 700),
         resizable=(True, True))
 
         # Create a model

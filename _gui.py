@@ -1,4 +1,5 @@
 import ttkbootstrap as ttk
+from ttkbootstrap.scrolled import ScrolledFrame
 from tkinter import PhotoImage
 from ttkbootstrap.constants import *
 
@@ -8,7 +9,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 import time
-import os
+import os, signal
 import numpy as np
 from threading import Thread
 from multiprocessing import Process
@@ -30,11 +31,13 @@ class Controller():
         for device in self.model.ports_list:
         #for device in self.model.spm.ports_list:
             port = device.device 
-            sensor_row = ttk.Frame(self.view.ss_frame, padding=5, bootstyle="dark")
+            sensor_row = ttk.Frame(self.view.scrolls_frame, padding=5, bootstyle="dark")
             sensor_row.pack(fill=X, expand=YES,  pady=5)
-
-            label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
-                        if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
+            if len(port.split('-'))>1:
+                label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
+                            if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
+            else: 
+                label_text = port
             _label = ttk.Label(sensor_row, text=label_text, width= 10, bootstyle="inverse-dark")
             _label.config(foreground="gray")
             _label.pack(side=LEFT)
@@ -61,8 +64,9 @@ class Controller():
             amountused=None,
             subtext="Battery level",
             bootstyle="light",
-            interactive=False)
-        _meter.pack(pady=10)
+            interactive=False,
+            padding=15)
+        _meter.pack()
         # Create the figure
         figure = Figure(figsize=(15, 8), dpi=100)
         figure.patch.set_facecolor('#222222')
@@ -93,12 +97,12 @@ class Controller():
         if len(ports) > 0: 
             #port = list(ports.keys())[0]
             _grey_rgb = (197/255, 202/255, 208/255)
-            _font = {'family': 'sans-serif',
+            _font = {   'family': 'sans-serif',
                         'color':  'white',
                         'weight': 'normal',
                         'size': 10,
                 }
-
+            n_samples = 1000
             # Create the axes
             # IMU
             acc_axes = figure.add_subplot(311)
@@ -129,10 +133,10 @@ class Controller():
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
                 acc_axes.set_facecolor('#222222')
-                acc_axes.plot(range(25), data[0,:], marker='o', label='x', color='#2A476C')
-                acc_axes.plot(range(25), data[1,:], marker='o', label='y', color='#18B179')
-                acc_axes.plot(range(25), data[2,:], marker='o', label='z', color='#825194')
-                acc_axes.legend()
+                acc_axes.plot(range(n_samples), data[0,:], label='x', color='#299CB1')
+                acc_axes.plot(range(n_samples), data[1,:], label='y', color='#18B179')
+                acc_axes.plot(range(n_samples), data[2,:], label='z', color='#825194')
+                acc_axes.legend(loc='upper right')
 
                 # Gyroscope
                 gyr_axes.cla()
@@ -140,10 +144,10 @@ class Controller():
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
                 gyr_axes.set_facecolor('#222222')
-                gyr_axes.plot(range(25), data[3,:], marker='o', label='x', color='#2A476C')
-                gyr_axes.plot(range(25), data[4,:], marker='o', label='y', color='#18B179')
-                gyr_axes.plot(range(25), data[5,:], marker='o', label='z', color='#825194')
-                gyr_axes.legend()
+                gyr_axes.plot(range(n_samples), data[3,:], label='x', color='#299CB1')
+                gyr_axes.plot(range(n_samples), data[4,:], label='y', color='#18B179')
+                gyr_axes.plot(range(n_samples), data[5,:], label='z', color='#825194')
+                gyr_axes.legend(loc='upper right')
 
                 # Magnetometer  
                 mag_axes.cla()
@@ -151,14 +155,14 @@ class Controller():
                 #acc_axes.set_xlabel("Time", fontdict=_font)
                 mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
                 mag_axes.set_facecolor('#222222')
-                mag_axes.plot(range(25), data[6,:], marker='o', label='x', color='#2A476C')
-                mag_axes.plot(range(25), data[7,:], marker='o', label='y', color='#18B179')
-                mag_axes.plot(range(25), data[8,:], marker='o', label='z', color='#825194')
-                mag_axes.legend()
+                mag_axes.plot(range(n_samples), data[6,:], label='x', color='#299CB1')
+                mag_axes.plot(range(n_samples), data[7,:], label='y', color='#18B179')
+                mag_axes.plot(range(n_samples), data[8,:], label='z', color='#825194')
+                mag_axes.legend(loc='upper right')
 
                 # Finally, re-draw the canvas
                 canvas.draw()
-                time.sleep(0.001)
+                time.sleep(0.01)
     
     def record(self):
         ports = self.model.ports
@@ -180,6 +184,15 @@ class Controller():
     def save_file(self, path, filename):
         self.model.write_file(path, filename)
 
+    def quit(self):
+        self.view.destroy()
+        print("Terminating background processes...")
+        for pid in self.model.process_ids:
+            os.kill(pid, signal.SIGKILL)
+        print("All serial processes terminated")
+        exit()
+
+
 class Model():
     """
     The model act as a serial port manager: mantains an array of processes, 
@@ -190,6 +203,7 @@ class Model():
     def __init__(self, spm):
         self.ports_list = [port for port in list_ports.comports()]
         self.ports = {}
+        self.process_ids = []
         self.spm = spm 
 
     def start_serial_port(self, port):
@@ -202,6 +216,7 @@ class Model():
             print("Starting process")
             p.start()
             self.ports[port] = serial_port  
+            self.process_ids.append(p.pid)
         except Exception as e: 
             print(f"Couldn't connect to serial port: {port}")
             print(e)
@@ -306,6 +321,9 @@ class View(ttk.Frame):
         self.ss_frame.pack(pady=10)
         ss_lframe_label = ttk.Label(self.ss_frame, text="Available SpaceSens sensors:", font="-size 18 -weight bold", bootstyle="inverse-dark")
         ss_lframe_label.pack(padx=10)
+        # Scrollable frame
+        self.scrolls_frame = ScrolledFrame(self.ss_frame, bootstyle="dark", height=300)
+        self.scrolls_frame.pack(pady=15)
         # Sensors-related button 
         bl_button_frame = ttk.Frame(self.outer_l_column, padding=25, bootstyle="dark")
         bl_button_frame.pack()
@@ -341,6 +359,7 @@ class View(ttk.Frame):
         entry2.pack(side=BOTTOM, expand=YES, pady=5)
         # Save button
         save_button = ttk.Button(fs_frame, text = "Save", command= lambda : self.controller.save_file(self.directory.get(),self.file.get()))
+        #save_button = ttk.Button(fs_frame, text = "Save", command= self.quit)
         save_button.pack()
         
         #Label container 
@@ -358,10 +377,11 @@ class View(ttk.Frame):
 
         data_label = ttk.Label(exercise_label_frame, text="Exercise execution classification:", bootstyle="inverse-dark", font="-size 18 -weight bold").pack(pady=5, side=TOP)
         self.classification = ttk.Label(exercise_label_frame, bootstyle="inverse-dark", text="No exercise detected", font="-size 16")
-        self.classification.pack(pady=5, side=BOTTOM)
+        self.classification.pack(pady=5)
+        quit_button = ttk.Button(exercise_label_frame, text = "QUIT", bootstyle="danger", command= self.quit_button_pressed).pack(side=RIGHT, padx=10)
 
         self.plot_frame = ttk.Frame(outer_r_column, padding = 25)
-        self.plot_frame.pack(fill=BOTH, expand=YES, side=BOTTOM)
+        self.plot_frame.pack(fill=BOTH, expand=YES)
 
         # Data label
         data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots:", font="-size 18 -weight bold").pack(fill=X)
@@ -382,9 +402,10 @@ class View(ttk.Frame):
     def saved_button_pressed(self, directory, filename):
         if self.controller:
             self.controller.save_file(directory, filename)
-
     
-
+    def quit_button_pressed(self):
+        if self.controller:
+            self.controller.quit()
     
 
 
