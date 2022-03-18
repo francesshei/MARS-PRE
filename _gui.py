@@ -23,6 +23,7 @@ class Controller():
         self.view = view 
         self.model = model
         self.recording = False 
+        self.tuning = False
     
     def create_sensors_list(self):
         # TODO: use port names instead of devices
@@ -34,8 +35,14 @@ class Controller():
             sensor_row = ttk.Frame(self.view.scrolls_frame, padding=5, bootstyle="dark")
             sensor_row.pack(fill=X, expand=YES,  pady=5)
             if len(port.split('-'))>1:
-                label_text = port.split('-')[1].lower().capitalize() + ' ' + port.split('-')[2].lower() \
-                            if len(port.split('-')[1]) <= 5 else port.split('-')[1].lower().capitalize()
+                position = port.split('-')[1].lower().capitalize() # Extracting the name of the sensor from its port definition
+                body_part = port.split('-')[2].lower()
+                if len(port.split('-')[1]) <= 5:
+                    if body_part == 'tight':
+                        body_part = 'thigh'
+                    label_text = f"{position} {body_part}"
+                else:
+                    label_text = f"{position}"
             else: 
                 label_text = port
             _label = ttk.Label(sensor_row, text=label_text, width= 10, bootstyle="inverse-dark")
@@ -51,6 +58,11 @@ class Controller():
     
     def connect_sensor(self, port, label, cal_button):
         self.model.start_serial_port(port)
+        # Set the port
+        if port.split('-')[1].lower().capitalize()=='Right' and port.split('-')[2].lower()=='tight':
+            self.model.exercise_ports[1] = port
+        if port.split('-')[1].lower().capitalize()=='Pelvis':
+            self.model.exercise_ports[2] = port
         # Activate the label and the calibration button
         label.config(foreground="white")
         cal_button.configure(state=ACTIVE)
@@ -93,6 +105,34 @@ class Controller():
                     self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
         """
         print(f"Calibrating {port}")
+
+    def grab_tuning_data(self):
+        ports = self.model.ports
+        exercise_ports = self.model.exercise_ports
+        exercise_type = self.model.exercise_type
+
+        if exercise_type is not None:
+            if not self.tuning:
+                try: 
+                    ports[exercise_ports[exercise_type]].clear_queue()
+                    ports[exercise_ports[exercise_type]].start_recording()
+                    self.view.tuning_monitor_button.configure(bootstyle='danger')
+                    self.view.tuning_monitor_button.configure(text='Stop acquiring')
+                    self.tuning = True
+                except: 
+                    print("Add corresponding sensor for tuning: right thigh for squats, pelvis for deadlift")
+            
+            elif self.tuning:
+                self.view.tuning_monitor_button.configure(bootstyle='primary')
+                self.view.tuning_monitor_button.configure(text='Acquire tuning data')
+                self.tuning = False
+                ports[exercise_ports[exercise_type]].stop_recording()
+                tuning_data = ports[exercise_ports[exercise_type]].listener.queue[1:]
+
+        self.model.update_exercise_quantities(tuning_data)
+
+    def update_exercise_type(self, exercise):
+        self.model.exercise_type = exercise
     
     def update_graph(self, figure, canvas, port, meter):
         ports = self.model.ports
@@ -123,48 +163,51 @@ class Controller():
                 spine.set_edgecolor(_grey_rgb)
             
             while True: 
-                # Retrieve the data to be plotted
-                data = ports[port].update_plot_data()
-                battery = ports[port].update_batt_lvl()
-                # Update the meter values
-                meter.configure(amountused=battery)
-                # Clear the graph to draw new data
-                # IMU 
-                acc_axes.cla()
-                acc_axes.set_ylim([-5,5])
-                #acc_axes.set_xlabel("Time", fontdict=_font)
-                acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
-                acc_axes.set_facecolor('#222222')
-                acc_axes.plot(range(n_samples), data[0,:], label='x', color='#299CB1')
-                acc_axes.plot(range(n_samples), data[1,:], label='y', color='#18B179')
-                acc_axes.plot(range(n_samples), data[2,:], label='z', color='#825194')
-                acc_axes.legend(loc='upper right')
+                try:
+                    # Retrieve the data to be plotted
+                    data = ports[port].update_plot_data()
+                    battery = ports[port].update_batt_lvl()
+                    # Update the meter values
+                    meter.configure(amountused=battery)
+                    # Clear the graph to draw new data
+                    # IMU 
+                    acc_axes.cla()
+                    acc_axes.set_ylim([-5,5])
+                    #acc_axes.set_xlabel("Time", fontdict=_font)
+                    acc_axes.set_ylabel("Accelerometer \n data", fontdict=_font)
+                    acc_axes.set_facecolor('#222222')
+                    acc_axes.plot(range(n_samples), data[0,:], label='x', color='#299CB1')
+                    acc_axes.plot(range(n_samples), data[1,:], label='y', color='#18B179')
+                    acc_axes.plot(range(n_samples), data[2,:], label='z', color='#825194')
+                    acc_axes.legend(loc='upper right')
 
-                # Gyroscope
-                gyr_axes.cla()
-                gyr_axes.set_ylim([-10,10])
-                #acc_axes.set_xlabel("Time", fontdict=_font)
-                gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
-                gyr_axes.set_facecolor('#222222')
-                gyr_axes.plot(range(n_samples), data[3,:], label='x', color='#299CB1')
-                gyr_axes.plot(range(n_samples), data[4,:], label='y', color='#18B179')
-                gyr_axes.plot(range(n_samples), data[5,:], label='z', color='#825194')
-                gyr_axes.legend(loc='upper right')
+                    # Gyroscope
+                    gyr_axes.cla()
+                    gyr_axes.set_ylim([-10,10])
+                    #acc_axes.set_xlabel("Time", fontdict=_font)
+                    gyr_axes.set_ylabel("Gyroscope \n data", fontdict=_font)
+                    gyr_axes.set_facecolor('#222222')
+                    gyr_axes.plot(range(n_samples), data[3,:], label='x', color='#299CB1')
+                    gyr_axes.plot(range(n_samples), data[4,:], label='y', color='#18B179')
+                    gyr_axes.plot(range(n_samples), data[5,:], label='z', color='#825194')
+                    gyr_axes.legend(loc='upper right')
 
-                # Magnetometer  
-                mag_axes.cla()
-                mag_axes.set_ylim([-20,20])
-                #acc_axes.set_xlabel("Time", fontdict=_font)
-                mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
-                mag_axes.set_facecolor('#222222')
-                mag_axes.plot(range(n_samples), data[6,:], label='x', color='#299CB1')
-                mag_axes.plot(range(n_samples), data[7,:], label='y', color='#18B179')
-                mag_axes.plot(range(n_samples), data[8,:], label='z', color='#825194')
-                mag_axes.legend(loc='upper right')
+                    # Magnetometer  
+                    mag_axes.cla()
+                    mag_axes.set_ylim([-20,20])
+                    #acc_axes.set_xlabel("Time", fontdict=_font)
+                    mag_axes.set_ylabel("Magentometer \n data", fontdict=_font)
+                    mag_axes.set_facecolor('#222222')
+                    mag_axes.plot(range(n_samples), data[6,:], label='x', color='#299CB1')
+                    mag_axes.plot(range(n_samples), data[7,:], label='y', color='#18B179')
+                    mag_axes.plot(range(n_samples), data[8,:], label='z', color='#825194')
+                    mag_axes.legend(loc='upper right')
 
-                # Finally, re-draw the canvas
-                canvas.draw()
-                time.sleep(0.01)
+                    # Finally, re-draw the canvas
+                    canvas.draw()
+                    time.sleep(0.01)
+                except Exception as e:
+                    print(e) 
     
     def record(self):
         ports = self.model.ports
@@ -174,6 +217,7 @@ class Controller():
             self.view.bl_button.configure(text='Stop recording')
             self.recording = True
             for port in ports.keys():
+                ports[port].clear_queue()
                 ports[port].start_recording()
         
         elif self.recording:
@@ -214,6 +258,9 @@ class Model():
     def __init__(self, spm):
         self.ports_list = [port for port in list_ports.comports()]
         self.ports = {}
+        self.exercise_type = None
+        self.exercise_ports = {}
+        self.squat_port = self.deadlift_port = None 
         self.process_ids = []
         self.spm = spm 
 
@@ -232,6 +279,9 @@ class Model():
             print(f"Couldn't connect to serial port: {port}")
             print(e)
     
+    def update_exercise_quantities(self, data):
+        print(data)
+
     def write_file(self, path, filename):
         if len(self.ports) > 0: 
             if not path or not filename:
@@ -276,7 +326,7 @@ class Model():
                         f"{path}/{filename}-{port.split('/')[-1]}.csv", 
                         self.ports[port].listener.queue[1:], 
                         delimiter=',', 
-                        header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z", 
+                        header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z, FreeAcc_x, FreeAcc_y, FreeAcc_z", 
                         comments="")
 
                 top = ttk.Toplevel()
@@ -333,13 +383,24 @@ class View(ttk.Frame):
         ss_lframe_label = ttk.Label(self.ss_frame, text="Available SpaceSens sensors:", font="-size 18 -weight bold", bootstyle="inverse-dark")
         ss_lframe_label.pack(padx=10)
         # Scrollable frame
-        self.scrolls_frame = ScrolledFrame(self.ss_frame, bootstyle="dark", height=300)
+        self.scrolls_frame = ScrolledFrame(self.ss_frame, bootstyle="dark", height=225)
         self.scrolls_frame.pack(pady=15)
         # Sensors-related button 
         bl_button_frame = ttk.Frame(self.outer_l_column, padding=25, bootstyle="dark")
         bl_button_frame.pack()
         self.bl_button = ttk.Button(self.ss_frame, text="Start recording", command=self.recording_button_pressed, width=15,  bootstyle="success")
         self.bl_button.pack(fill=X, side=BOTTOM, expand=NO, pady=7)
+        # Exercise choice button
+        exc_choice_frame = ttk.Frame(self.outer_l_column, padding=25, bootstyle="dark")
+        exc_choice_frame.pack()
+        self.ex_choice_button = ttk.Menubutton(exc_choice_frame, text="Exercise type")
+        self.ex_choice_button.pack(side=LEFT, padx=(0,5))
+        self.ex_choice_button.menu = ttk.Menu(self.ex_choice_button)
+        self.ex_choice_button["menu"] = self.ex_choice_button.menu
+        self.ex_choice_button.menu.add_checkbutton(label='Squat', command = lambda value = 1, text = "Squat" : self.update_exercise_type(value, text))
+        self.ex_choice_button.menu.add_checkbutton(label='Deadlift', command = lambda value = 2, text = "Deadlift" : self.update_exercise_type(value, text))
+        self.tuning_monitor_button = ttk.Button(exc_choice_frame, command=self.monitor_tuning_button_pressed, padding=5, text="Acquire tuning data")
+        self.tuning_monitor_button.pack(side=RIGHT)
         #  ----------------------------------------------------------------
         # File saving 
         fs_frame = ttk.Frame(self.outer_l_column, padding=15)
@@ -411,6 +472,10 @@ class View(ttk.Frame):
     def recording_button_pressed(self):
         if self.controller:
             self.controller.record()
+
+    def monitor_tuning_button_pressed(self):
+         if self.controller:
+            self.controller.grab_tuning_data()
     
     def saved_button_pressed(self, directory, filename):
         if self.controller:
@@ -419,6 +484,11 @@ class View(ttk.Frame):
     def quit_button_pressed(self):
         if self.controller:
             self.controller.quit()
+    
+    def update_exercise_type(self, value, text):
+        self.ex_choice_button.configure(text=text)
+        if self.controller:
+            self.controller.update_exercise_type(value)
     
 
 

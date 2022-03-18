@@ -39,7 +39,9 @@ class SerialPort(serial.Serial):
     def stop_recording(self):
         if self.listener:
             self.listener.is_recording = False
-            self.queue = np.empty((1,12), dtype=np.float) 
+    
+    def clear_queue(self):
+        self.listener.queue = np.empty((1,12), dtype=np.float) 
 
     def update_plot_data(self):
         return self.listener.plot_data
@@ -47,8 +49,9 @@ class SerialPort(serial.Serial):
     def update_batt_lvl(self):
         return self.listener.batt_level
     
+    #NOTE: This causes an error with the live plotter: do not use
     def get_listener_queue(self):
-        return self.listener.queue
+        return self.listener.queue[1:]
     
     # SERIAL-RELATED FUNCTIONS: read/write from BT port 
     def packets_stream(self, packet_length=27, batt_message_length=2):
@@ -172,9 +175,8 @@ class SerialSubscriber():
         lin_acc_array = np.subtract(acc_fixed_rf, self.g_ideal)  # subtract gravity
         free_acc_body_rf = inv_q.rotate(lin_acc_array)  # rotate acceleration to be aligned with body RF again
 
-        # Update only stores packets in the queue when the flag (that can be set false by GUI) allows it    
+        # Update only stores packets in the queue when the flag (that can be set false by GUI) allows it  
         if self.is_recording:
-            # TODO: use time to synch data acquired from the different sensors
             delta_time = time.time() 
             queue_item = np.concatenate((acc_array, gyro_array, mag_array, free_acc_body_rf), axis=None)
             self.queue = np.vstack((self.queue, queue_item))
@@ -232,7 +234,7 @@ class SerialPortManager(BaseManager): pass
 class SerialProcessProxy(NamespaceProxy):
     # __dunder__ methods of base NamespaceProxy, need to be exposed
     # in addition to the desired methods
-    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'write_to_serial', 'update_plot_data', 'update_batt_lvl') # 'get_listener_data', 'set_port', 'ports', 'listeners')
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'clear_queue', 'write_to_serial', 'update_plot_data', 'update_batt_lvl') # 'get_listener_data', 'set_port', 'ports', 'listeners')
 
     def packets_stream(self):
         callmethod = object.__getattribute__(self, '_callmethod')
@@ -243,6 +245,9 @@ class SerialProcessProxy(NamespaceProxy):
     def stop_recording(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('stop_recording')
+    def clear_queue(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('clear_queue')
     def write_to_serial(self, message):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('write_to_serial',(message,))
