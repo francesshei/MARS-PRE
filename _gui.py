@@ -54,8 +54,11 @@ class Controller():
         # Activate the label and the calibration button
         label.config(foreground="white")
         cal_button.configure(state=ACTIVE)
+        if str(self.view.quit_button['state']) == 'disabled':
+            self.view.quit_button.configure(state=ACTIVE)
         # Create a frame and add it to the notebook widget
         plot_frame = ttk.Frame(self.view.notebook)
+        # TODO clean the notebook text
         self.view.notebook.add(plot_frame, text=port)
         # Place the meter on the frame
         _meter = ttk.Meter(
@@ -90,7 +93,6 @@ class Controller():
                     self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
         """
         print(f"Calibrating {port}")
-    
     
     def update_graph(self, figure, canvas, port, meter):
         ports = self.model.ports
@@ -185,12 +187,21 @@ class Controller():
         self.model.write_file(path, filename)
 
     def quit(self):
-        self.view.destroy()
-        print("Terminating background processes...")
-        for pid in self.model.process_ids:
-            os.kill(pid, signal.SIGKILL)
-        print("All serial processes terminated")
-        exit()
+        nb = self.view.notebook
+        #def deletetab():
+        for item in nb.winfo_children():
+            if str(item) == (nb.select()):
+                #print(nb.select())
+                item.destroy()
+                return  #Necessary to break or for loop can destroy all the tabs when first tab is deleted
+
+
+        #self.view.destroy()
+        #print("Terminating background processes...")
+        #for pid in self.model.process_ids:
+        #    os.kill(pid, signal.SIGKILL)
+        #print("All serial processes terminated")
+        #exit()
 
 
 class Model():
@@ -375,16 +386,18 @@ class View(ttk.Frame):
         exercise_label_frame = ttk.Frame(self, bootstyle="dark")
         exercise_label_frame.pack(fill=BOTH, expand=NO)
 
-        data_label = ttk.Label(exercise_label_frame, text="Exercise execution classification:", bootstyle="inverse-dark", font="-size 18 -weight bold").pack(pady=5, side=TOP)
+        exercise_title = ttk.Label(exercise_label_frame, text="Exercise execution classification:", bootstyle="inverse-dark", font="-size 18 -weight bold").pack(pady=5, side=TOP)
         self.classification = ttk.Label(exercise_label_frame, bootstyle="inverse-dark", text="No exercise detected", font="-size 16")
         self.classification.pack(pady=5)
-        quit_button = ttk.Button(exercise_label_frame, text = "QUIT", bootstyle="danger", command= self.quit_button_pressed).pack(side=RIGHT, padx=10)
 
         self.plot_frame = ttk.Frame(outer_r_column, padding = 25)
         self.plot_frame.pack(fill=BOTH, expand=YES)
 
         # Data label
         data_label = ttk.Label(self.plot_frame, text= "SpaceSens data plots:", font="-size 18 -weight bold").pack(fill=X)
+        self.quit_button = ttk.Button(self.plot_frame, text = "Close tab", bootstyle="outline-danger", command= self.quit_button_pressed)
+        self.quit_button.pack(side=RIGHT, padx=5)
+        self.quit_button.configure(state=DISABLED)
         self.notebook = ttk.Notebook(self.plot_frame, padding=15)
         self.notebook.pack(fill=BOTH, expand=YES)
 

@@ -39,6 +39,7 @@ class SerialPort(serial.Serial):
     def stop_recording(self):
         if self.listener:
             self.listener.is_recording = False
+            self.queue = np.empty((1,12), dtype=np.float) 
 
     def update_plot_data(self):
         return self.listener.plot_data
@@ -251,7 +252,6 @@ class SerialProcessProxy(NamespaceProxy):
     def update_batt_lvl(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('update_batt_lvl')
-
 
 SerialPortManager.register('SerialPort', SerialPort, SerialProcessProxy)
 
