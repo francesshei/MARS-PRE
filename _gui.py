@@ -82,19 +82,36 @@ class Controller():
     def calibrate_sensor(self, port):
 
         '''
+        SPIEGAZIONE:
+
        - viene inviato 'b' ad Arduino (che capisce di dover aspettare gli errori da sottrarre per calibrare--la calibrazione avviene internamente ad Arduino--). 
        - muovo il sensore per 10 sec e nel mentre acquisisco quei segnali
        - li invio ad Arduino
-       '''
+       
 
-        '''
-        non sembra davvero funzionare, ma non sono sicura sia sbagliato...
+
+        RISULTATI: 
+
+        per confrontare i dati calibrati che quelli non calibrati, faccio un recording pre e post calibration:
+            - vedo l'ultima riga del csv del pre e poi confronto con tutto ciò che è stato salvato da quella riga in poi nel post
+
+        a volte (NON SEMPRE) i risultati cambiano (per ex. da -6x10^(-3) a 9x10^(-3)). 
+        in un caso sono anche passata da 10^(-1) a 10^(-2) -- il tutto esattamente dalla prima riga del post fino alla fine del csv...proprio due blocchi di dati diversi--
+        Però non mi sembra davvero funzionare...
+        
+
+
+        CONFRONTO CON LAURA:
+
         neanche nell'applicazione di Laura sembra funzionare : 
            - prima di calibrare ha Acc_X, ad esempio, di 0.05;
            - dopo la calibrazione (l'ho rifatta 3 volte) resta a 0.05 (nonostante il grafico che rappresenta il movimento fatto sia perfettamente circolare e centrato in 0 -- nella sua tesi dice che per capire la bontà della calibrazione bisogna vedere quello--)
 
         o non può esserci un calcolo perfetto e queste accelerazioni sono ottenute da un magnetometro già calibrato (magari senza calibrazione sarebbe venuto 1.5 piuttosto che 0.05)
-        oppure ho inteso male io (però appunto il fatto che neanche a Laura cambi il valore mi fa pensare che magari sia giusto così...)'''
+        oppure ho inteso male io (però appunto il fatto che neanche a Laura cambi il valore mi fa pensare che magari sia giusto così...)
+        '''
+
+        
 
         # start_time = time.time()
 
