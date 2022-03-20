@@ -40,6 +40,14 @@ class SerialPort(serial.Serial):
         if self.listener:
             self.listener.is_recording = False
             self.queue = np.empty((1,12), dtype=np.float) 
+    
+    def start_calibrating(self):
+        if self.listener:
+            self.listener.is_calibrating = True
+    
+    def stop_calibrating(self):
+        if self.listener:
+            self.listener.is_calibrating = False
 
     def update_plot_data(self):
         return self.listener.plot_data
@@ -143,12 +151,13 @@ class SerialSubscriber():
     def __init__(self):
         n_samples = 1000
         self.total_lvl = 0.0
-        self.g_ideal = np.array([0, 0, 1]) #vettore gravità
         self.batt_level = 0
         self.n_batt_updates = 0
         self.is_recording = False
+        self.is_calibrating = False
         self.plot_data = np.zeros((9,n_samples), dtype=np.float)  # Keeping the last 25 values to be plotted
-        self.queue = np.empty((1,12), dtype=np.float) 
+        self.queue = np.empty((1,9), dtype=np.float) 
+        self.magn = np.empty((1,3), dtype=np.float) 
 
     def compute_battery_level(self, new_lvl):
         self.total_lvl += new_lvl
@@ -165,18 +174,18 @@ class SerialSubscriber():
         acc_array = np.array(data[0:3],dtype=np.float) * acc_sensitivity
         gyro_array = np.array(data[3:6], dtype=np.float) * gyr_sensitivity * np.pi/180  # Rad/s conversion
         mag_array = np.array(data[6:9], dtype=np.float) * mag_sensitivity
-        quat = np.array(data[9:13], dtype=np.float) / 10000  # these need to be scaled by a factor of 1000
-        q = Quaternion(quat)
-        inv_q = q.inverse
-        acc_fixed_rf = q.rotate(acc_array)  # rotate acceleration to be aligned with earth RF
-        lin_acc_array = np.subtract(acc_fixed_rf, self.g_ideal)  # subtract gravity
-        free_acc_body_rf = inv_q.rotate(lin_acc_array)  # rotate acceleration to be aligned with body RF again
+        # quat = np.array(data[9:13], dtype=np.float) / 10000  # these need to be scaled by a factor of 1000
+        # q = Quaternion(quat)
+        # inv_q = q.inverse
+        # acc_fixed_rf = q.rotate(acc_array)  # rotate acceleration to be aligned with earth RF
+        # lin_acc_array = np.subtract(acc_fixed_rf, self.g_ideal)  # subtract gravity
+        # free_acc_body_rf = inv_q.rotate(lin_acc_array)  # rotate acceleration to be aligned with body RF again
 
         # Update only stores packets in the queue when the flag (that can be set false by GUI) allows it    
         if self.is_recording:
             # TODO: use time to synch data acquired from the different sensors
             delta_time = time.time() 
-            queue_item = np.concatenate((acc_array, gyro_array, mag_array, free_acc_body_rf), axis=None)
+            queue_item = np.concatenate((acc_array, gyro_array, mag_array), axis=None)
             self.queue = np.vstack((self.queue, queue_item))
 
             #Acc = [i * aRes for i in Acc] #porto dati nelle loro M.U
@@ -227,16 +236,25 @@ class SerialSubscriber():
         self.plot_data[3:6, -1] = gyro_array
         self.plot_data[6:9, -1] = mag_array
 
+        if self.is_calibrating:
+            self.magn = np.vstack((self.magn, mag_array))
+
 class SerialPortManager(BaseManager): pass
 
 class SerialProcessProxy(NamespaceProxy):
     # __dunder__ methods of base NamespaceProxy, need to be exposed
     # in addition to the desired methods
-    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'write_to_serial', 'update_plot_data', 'update_batt_lvl') # 'get_listener_data', 'set_port', 'ports', 'listeners')
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__','packets_stream', 'start_recording', 'stop_recording', 'start_calibrating', 'stop_calibrating','write_to_serial', 'update_plot_data', 'update_batt_lvl') # 'get_listener_data', 'set_port', 'ports', 'listeners')
 
     def packets_stream(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('packets_stream')
+    def start_calibrating(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('start_calibrating')
+    def stop_calibrating(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('stop_calibrating')
     def start_recording(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('start_recording')

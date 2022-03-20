@@ -80,19 +80,63 @@ class Controller():
         Thread(target = lambda fig=figure, canvas=figure_canvas, port=port, meter=_meter: self.update_graph(fig,canvas, port, meter)).start()
 
     def calibrate_sensor(self, port):
-        # TODO: send calibration command to sensors 
-        """
-        From Laura's code:
-        if self.readable_magcal_pipes[self.position].poll():
-                data_cal = self.readable_magcal_pipes[self.position].recv() #ricevo info su ricalibrazione mag
-                if data_cal == 'start calibration':
-                    self.ser.write(b'b') #invio carattere ad Arduino per informarlo del voler fare ricalibrazione 
-                else:
-                    print(data_cal) #al termine della calibrazione ottendgo valori di bias e scale
-                    data_send = data_cal+'\n'
-                    self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
-        """
-        print(f"Calibrating {port}")
+
+        '''
+       - viene inviato 'b' ad Arduino (che capisce di dover aspettare gli errori da sottrarre per calibrare--la calibrazione avviene internamente ad Arduino--). 
+       - muovo il sensore per 10 sec e nel mentre acquisisco quei segnali
+       - li invio ad Arduino
+       '''
+
+        '''
+        non sembra davvero funzionare, ma non sono sicura sia sbagliato...
+        neanche nell'applicazione di Laura sembra funzionare : 
+           - prima di calibrare ha Acc_X, ad esempio, di 0.05;
+           - dopo la calibrazione (l'ho rifatta 3 volte) resta a 0.05 (nonostante il grafico che rappresenta il movimento fatto sia perfettamente circolare e centrato in 0 -- nella sua tesi dice che per capire la bontà della calibrazione bisogna vedere quello--)
+
+        o non può esserci un calcolo perfetto e queste accelerazioni sono ottenute da un magnetometro già calibrato (magari senza calibrazione sarebbe venuto 1.5 piuttosto che 0.05)
+        oppure ho inteso male io (però appunto il fatto che neanche a Laura cambi il valore mi fa pensare che magari sia giusto così...)'''
+
+        # start_time = time.time()
+
+        ports = self.model.ports
+       
+        mag_diff = []
+        self.mag_bias = []
+        self.mag_scale = []
+        mag_cal = []
+
+        _serial_port = self.model.serial_port
+        _serial_port.write_to_serial('b')
+
+        # while (time. time() - start_time) <= 10:
+        #NOTE: Laura non agisce subito sui dati ma ne fa una copia e lavora con la copia
+        
+        ports[port].start_calibrating()
+
+        print('start')
+        time.sleep(10) #durante questi 10 secondi muovi il sensore
+        data = ports[port].listener.magn[1:] #NOTE: i dati vengono appesi solo quando ho il flag di calibrazione a True
+        ports[port].stop_calibrating()
+        # print(f"Calibrating {data}")
+        print(f"Calibrating {data.shape}")
+
+        for i in range(data.shape[1]): #x,y,z
+            mag_i_max = max(data[:,i]) 
+            mag_i_min = min(data[:,i]) 
+            self.mag_bias.append((mag_i_max + mag_i_min)/2)
+            mag_diff.append((mag_i_max - mag_i_min)/2)
+        mag_mean = sum(mag_diff)/3
+
+        for i in range(data.shape[1]): #x,y,z
+            self.mag_scale.append((mag_mean/mag_diff[i]))
+            mag_cal.append([(j-self.mag_bias[i])*self.mag_scale[i] for j in data[:,i]])
+        
+        data_cal = str(round(self.mag_bias[0],2))+','+str(round(self.mag_scale[0],2))+','+str(round(self.mag_bias[1],2))+','+str(round(self.mag_scale[1],2))+','+str(round(self.mag_bias[2],2))+','+str(round(self.mag_scale[2],2))
+        # print(data_cal) #al termine della calibrazione ottengo valori di bias e scale
+        # print(self.mag_bias)
+        # print(self.mag_scale)
+        data_send = data_cal+'\n'
+        _serial_port.write_to_serial(data_send)
     
     def update_graph(self, figure, canvas, port, meter):
         ports = self.model.ports
@@ -222,6 +266,7 @@ class Model():
             s = SerialSubscriber()
             serial_port = self.spm.SerialPort(port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=s)
             #start_port(port)
+            self.serial_port = serial_port 
             serial_port.write_to_serial('v')
             p = Process(target=serial_port.packets_stream)
             print("Starting process")
