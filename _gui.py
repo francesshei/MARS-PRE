@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+from scipy.signal import find_peaks
 
 import time
 import os, signal
@@ -59,9 +60,9 @@ class Controller():
     def connect_sensor(self, port, label, cal_button):
         self.model.start_serial_port(port)
         # Set the port
-        if port.split('-')[1].lower().capitalize()=='Right' and port.split('-')[2].lower()=='tight':
+        if port.split('-')[1].lower().capitalize()=='Pelvis': # Deadlift port (exercise type = 1)
             self.model.exercise_ports[1] = port
-        if port.split('-')[1].lower().capitalize()=='Pelvis':
+        if port.split('-')[1].lower().capitalize()=='Right' and port.split('-')[2].lower()=='tight': # Squats port (exercise type = 1)
             self.model.exercise_ports[2] = port
         # Activate the label and the calibration button
         label.config(foreground="white")
@@ -127,9 +128,7 @@ class Controller():
                 self.view.tuning_monitor_button.configure(text='Acquire tuning data')
                 self.tuning = False
                 ports[exercise_ports[exercise_type]].stop_recording()
-                tuning_data = ports[exercise_ports[exercise_type]].listener.queue[1:]
-
-        self.model.update_exercise_quantities(tuning_data)
+                self.model.update_exercise_quantities(ports[exercise_ports[exercise_type]].listener.queue[1:])
 
     def update_exercise_type(self, exercise):
         self.model.exercise_type = exercise
@@ -280,7 +279,58 @@ class Model():
             print(e)
     
     def update_exercise_quantities(self, data):
-        print(data)
+        # TODO: use data to update the training quantites
+        # Will most likely need to be threaded
+        
+        # NOTE: exercise type is either 1 for deadlifts or 2 for squats
+        # Squats need the 6th data component, while deadlifts need the 4th. 
+        # This can be automatically selected creating using as index: 1 + 2 * exercise_type
+
+        tuning_data = data[:, 1 + 2 * self.exercise_type]
+        tuning_packets_num = data.shape[0]
+        # Extracting the signal quantities
+        peaks, peaks_properties = find_peaks(tuning_data, height=0.5, width = 30)  # NOTE: was originally 40 but was too strict
+        valleys, valley_properties = find_peaks(-tuning_data, height=0.5, width = 30)
+        # If the algorithm detects at least one peak and a valley
+        if peaks.size > 0 and valleys.size > 0:
+            # Find zero-crossings
+            zero_crosses = np.where(np.roll(tuning_data, -1)*tuning_data<0)[0]
+            zeroc_pos2neg = zero_crosses[np.nonzero(tuning_data[zero_crosses]>0)]
+            zeroc_neg2pos = zero_crosses[np.nonzero(tuning_data[zero_crosses]<0)]
+
+            dt = 0
+            threshold_percentage = 0.5
+            
+            for peak in peaks: 
+                # Finding the peaks/zero-crossings correspondences
+                crossings_pre_peak = np.where(zeroc_neg2pos < peak)[0]
+                crossings_post_peak = np.where(zeroc_pos2neg > peak)[0]
+                dt = dt + zeroc_pos2neg[crossings_post_peak[0]] - zeroc_neg2pos[crossings_pre_peak[-1]]
+
+            dt = dt/len(peaks)
+
+            # TODO: this could be a pop-up window
+            print(f"Average number of samples between the start and end of the peaks: {dt}")
+            print(f"Number of repetitions: {len(peaks)}")
+            # Finding amplitude thresholds for findpeaks function
+            heights = peaks_properties["peak_heights"]
+            print('Height of all peaks:', heights)
+            peak_height = np.mean(heights)
+            print('Average peak height: {}'.format(peak_height))
+            heights_valleys = valley_properties["peak_heights"]
+            valley_height = np.mean(heights_valleys)
+            print('Average valley height: {}'.format(valley_height))                    
+            p_threshold_amp = round(peak_height*threshold_percentage,2)
+            print(f'Peaks threshold height:{p_threshold_amp}')
+            v_threshold_amp = round(valley_height*threshold_percentage,2)
+            print(f'Valleys threshold height:{v_threshold_amp}')
+            """
+            self.initial_calibration_flag = True
+            self.n_rep = 0
+            elf.repetitions = [[] for i in range(2)]
+            """
+        else: 
+            print("Please, repeat the calibration session")
 
     def write_file(self, path, filename):
         if len(self.ports) > 0: 
@@ -397,8 +447,8 @@ class View(ttk.Frame):
         self.ex_choice_button.pack(side=LEFT, padx=(0,5))
         self.ex_choice_button.menu = ttk.Menu(self.ex_choice_button)
         self.ex_choice_button["menu"] = self.ex_choice_button.menu
-        self.ex_choice_button.menu.add_checkbutton(label='Squat', command = lambda value = 1, text = "Squat" : self.update_exercise_type(value, text))
-        self.ex_choice_button.menu.add_checkbutton(label='Deadlift', command = lambda value = 2, text = "Deadlift" : self.update_exercise_type(value, text))
+        self.ex_choice_button.menu.add_checkbutton(label='Squat', command = lambda value = 2, text = "Squat" : self.update_exercise_type(value, text))
+        self.ex_choice_button.menu.add_checkbutton(label='Deadlift', command = lambda value = 1, text = "Deadlift" : self.update_exercise_type(value, text))
         self.tuning_monitor_button = ttk.Button(exc_choice_frame, command=self.monitor_tuning_button_pressed, padding=5, text="Acquire tuning data")
         self.tuning_monitor_button.pack(side=RIGHT)
         #  ----------------------------------------------------------------
