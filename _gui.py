@@ -1,3 +1,4 @@
+from matplotlib.pyplot import axhline
 import ttkbootstrap as ttk
 from ttkbootstrap.scrolled import ScrolledFrame
 from tkinter import PhotoImage
@@ -107,7 +108,7 @@ class Controller():
         """
         print(f"Calibrating {port}")
 
-    def grab_tuning_data(self):
+    def perform_tuning(self):
         ports = self.model.ports
         exercise_ports = self.model.exercise_ports
         exercise_type = self.model.exercise_type
@@ -120,15 +121,18 @@ class Controller():
                     self.view.tuning_monitor_button.configure(bootstyle='danger')
                     self.view.tuning_monitor_button.configure(text='Stop acquiring')
                     self.tuning = True
-                except: 
-                    print("Add corresponding sensor for tuning: right thigh for squats, pelvis for deadlift")
-            
+                except:
+                    message = "Add corresponding sensor for tuning: right thigh for squats, pelvis for deadlift"
+                    self.view.display_warning_popup(message)
             elif self.tuning:
                 self.view.tuning_monitor_button.configure(bootstyle='primary')
                 self.view.tuning_monitor_button.configure(text='Acquire tuning data')
                 self.tuning = False
                 ports[exercise_ports[exercise_type]].stop_recording()
-                self.model.update_exercise_quantities(ports[exercise_ports[exercise_type]].listener.queue[1:])
+                tuning_outcomes = self.model.analyze_exercise_tuning_data(ports[exercise_ports[exercise_type]].listener.queue[1:])
+                if len(tuning_outcomes) > 0:
+                    self.view.display_tuning_outcomes(tuning_outcomes)
+                else: self.view.display_warning_popup("Calibration sesssion must be repeated!")
 
     def update_exercise_type(self, exercise):
         self.model.exercise_type = exercise
@@ -227,7 +231,8 @@ class Controller():
                 ports[port].stop_recording()
     
     def save_file(self, path, filename):
-        self.model.write_file(path, filename)
+        outcome = self.model.write_file(path, filename)
+        self.view.display_saving_outcome(outcome)
 
     def quit(self):
         nb = self.view.notebook
@@ -237,14 +242,6 @@ class Controller():
                 #print(nb.select())
                 item.destroy()
                 return  #Necessary to break or for loop can destroy all the tabs when first tab is deleted
-
-
-        #self.view.destroy()
-        #print("Terminating background processes...")
-        #for pid in self.model.process_ids:
-        #    os.kill(pid, signal.SIGKILL)
-        #print("All serial processes terminated")
-        #exit()
 
 
 class Model():
@@ -281,133 +278,82 @@ class Model():
     def update_exercise_quantities(self, data):
         # TODO: use data to update the training quantites
         # Will most likely need to be threaded
-        
+        pass
+
+    def analyze_exercise_tuning_data(self,data):
+        analysis_outcomes = {}  # Initializing the outcomes to be sent to View for display
+        dt = 0
+        threshold_percentage = 0.5 # Will be used to set the threshold values
         # NOTE: exercise type is either 1 for deadlifts or 2 for squats
         # Squats need the 6th data component, while deadlifts need the 4th. 
         # This can be automatically selected creating using as index: 1 + 2 * exercise_type
-
         tuning_data = data[:, 1 + 2 * self.exercise_type]
-        tuning_packets_num = data.shape[0]
+        #tuning_packets_num = data.shape[0]
         # Extracting the signal quantities
         peaks, peaks_properties = find_peaks(tuning_data, height=0.5, width = 30)  # NOTE: was originally 40 but was too strict
-        valleys, valley_properties = find_peaks(-tuning_data, height=0.5, width = 30)
+        valleys, valleys_properties = find_peaks(-tuning_data, height=0.5, width = 30)
+        
         # If the algorithm detects at least one peak and a valley
         if peaks.size > 0 and valleys.size > 0:
             # Find zero-crossings
             zero_crosses = np.where(np.roll(tuning_data, -1)*tuning_data<0)[0]
             zeroc_pos2neg = zero_crosses[np.nonzero(tuning_data[zero_crosses]>0)]
             zeroc_neg2pos = zero_crosses[np.nonzero(tuning_data[zero_crosses]<0)]
-
-            dt = 0
-            threshold_percentage = 0.5
-            
             for peak in peaks: 
                 # Finding the peaks/zero-crossings correspondences
                 crossings_pre_peak = np.where(zeroc_neg2pos < peak)[0]
                 crossings_post_peak = np.where(zeroc_pos2neg > peak)[0]
                 dt = dt + zeroc_pos2neg[crossings_post_peak[0]] - zeroc_neg2pos[crossings_pre_peak[-1]]
-
             dt = dt/len(peaks)
 
-            # TODO: this could be a pop-up window
-            print(f"Average number of samples between the start and end of the peaks: {dt}")
-            print(f"Number of repetitions: {len(peaks)}")
-            # Finding amplitude thresholds for findpeaks function
-            heights = peaks_properties["peak_heights"]
-            print('Height of all peaks:', heights)
-            peak_height = np.mean(heights)
-            print('Average peak height: {}'.format(peak_height))
-            heights_valleys = valley_properties["peak_heights"]
-            valley_height = np.mean(heights_valleys)
-            print('Average valley height: {}'.format(valley_height))                    
-            p_threshold_amp = round(peak_height*threshold_percentage,2)
-            print(f'Peaks threshold height:{p_threshold_amp}')
-            v_threshold_amp = round(valley_height*threshold_percentage,2)
-            print(f'Valleys threshold height:{v_threshold_amp}')
-            """
-            self.initial_calibration_flag = True
-            self.n_rep = 0
-            elf.repetitions = [[] for i in range(2)]
-            """
-        else: 
-            print("Please, repeat the calibration session")
+            # Packing the results in their dictionary
+            analysis_outcomes["data"] = tuning_data
+            analysis_outcomes["rising_crossings_timestamps"] = zeroc_neg2pos
+            analysis_outcomes["falling_crossings_timestamps"] = zeroc_pos2neg
+            analysis_outcomes["dt"] = dt
+            analysis_outcomes["num"] = len(peaks)
+            analysis_outcomes["peaks_timestamps"] = peaks
+            analysis_outcomes["valleys_timestamps"] = valleys
+            peaks_heights = peaks_properties["peak_heights"]
+            analysis_outcomes["p_heights"] = peaks_heights
+            peak_height = np.mean(peaks_heights)
+            analysis_outcomes["avg_p_height"] = peak_height
+            valley_depths = valleys_properties["peak_heights"]
+            analysis_outcomes["v_depths"] = valley_depths
+            valley_depth = np.mean(valley_depths)
+            analysis_outcomes["avg_v_depth"] = valley_depth
+            analysis_outcomes["p_threshold"] = round(peak_height*threshold_percentage,2)
+            analysis_outcomes["v_threshold"] = round(valley_depth*threshold_percentage,2)
+            
+        return analysis_outcomes
 
     def write_file(self, path, filename):
+        # Writes the file and returns a value corresponding to the error (if any) 
+        # 1: fields not filled
+        # 2: no directory found
+        # 3: saving exception
+        # 4: no serial available / no data
+        msg = 0  # Everything goes well 
+
         if len(self.ports) > 0: 
             if not path or not filename:
-                # Pop-up warning window
-                top = ttk.Toplevel()
-                top.title('WARNING')
-
-                _frame = ttk.Frame(top, padding = 25)
-                _frame.pack(expand = NO, side=TOP)
-                label = ttk.Label(_frame, text = "Please, fill the required fields!")
-                label.pack(expand = NO)
-
-                _but = ttk.Frame(top, padding = 15)
-                _but.pack(expand = NO, side=TOP)
-                but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle="outline-warning")
-                but.pack(expand = NO)   
-
-                top.transient()
-                top.grab_set()
-
+                msg = 1
             elif not os.path.isdir(path): 
-                
-                top = ttk.Toplevel()
-                top.title("WARNING")
-
-                _frame = ttk.Frame(top, padding = 25)
-                _frame.pack(expand = NO, side=TOP)
-                label = ttk.Label(_frame, text = "Directory not found!")
-                label.pack(expand = NO)
-
-                _but = ttk.Frame(top, padding = 15)
-                _but.pack(expand = NO, side=TOP)
-                but = ttk.Button(_but, text = 'Quit', command = top.destroy, bootstyle="outline-warning")
-                but.pack(expand = NO)   
-
-                top.transient()
-                top.grab_set()
-            
+                msg = 2
             else: 
-                for port in self.ports.keys():
-                    np.savetxt(
-                        f"{path}/{filename}-{port.split('/')[-1]}.csv", 
-                        self.ports[port].listener.queue[1:], 
-                        delimiter=',', 
-                        header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z, FreeAcc_x, FreeAcc_y, FreeAcc_z", 
-                        comments="")
-
-                top = ttk.Toplevel()
-                top.title('')
-
-                _frame = ttk.Frame(top, padding = 25)
-                _frame.pack(expand = NO, side=TOP)
-                label = ttk.Label(_frame, text = f"Data saved in {path}/{filename}-{port.split('/')[-1]}.csv", \
-                                                wraplength=220, anchor=ttk.NW, justify=ttk.LEFT)
-                label.pack(expand = NO)
-
-                _but = ttk.Frame(top, padding = 15)
-                _but.pack(expand = NO, side=TOP)
-                but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle = "outline-success")
-                but.pack(expand = NO)   
-
-                top.transient()
-                top.grab_set()
+                try:
+                    for port in self.ports.keys():
+                        np.savetxt(
+                            f"{path}/{filename}-{port.split('/')[-1]}.csv", 
+                            self.ports[port].listener.queue[1:], 
+                            delimiter=',', 
+                            header="Acc_x,Acc_y,Acc_z,Gyro_x,Gyro_y,Gyro_z,Mag_x,Mag_y,Mag_z, FreeAcc_x, FreeAcc_y, FreeAcc_z", 
+                            comments="")
+                except: msg = 3
         else: 
-            top = ttk.Toplevel()
-            top.title("WARNING")
-            _frame = ttk.Frame(top, padding = 25)
-            _frame.pack(expand = NO, side=TOP)
-            label = ttk.Label(_frame, text = "No active port to store data from.")
-            label.pack(expand = NO)
-            _but = ttk.Frame(top, padding = 15)
-            _but.pack(expand = NO, side=TOP)
-            but = ttk.Button(_but, text = 'Quit', command = top.destroy, bootstyle="outline-warning")
-            but.pack(expand = NO)   
-            top.transient()
-            top.grab_set()
+            msg = 4
+        
+        return msg
 
 
 class View(ttk.Frame):
@@ -447,8 +393,8 @@ class View(ttk.Frame):
         self.ex_choice_button.pack(side=LEFT, padx=(0,5))
         self.ex_choice_button.menu = ttk.Menu(self.ex_choice_button)
         self.ex_choice_button["menu"] = self.ex_choice_button.menu
-        self.ex_choice_button.menu.add_checkbutton(label='Squat', command = lambda value = 2, text = "Squat" : self.update_exercise_type(value, text))
-        self.ex_choice_button.menu.add_checkbutton(label='Deadlift', command = lambda value = 1, text = "Deadlift" : self.update_exercise_type(value, text))
+        self.ex_choice_button.menu.add_checkbutton(label='Squat', command = lambda value = 2, text = "Squat" : self.exercise_type_selected(value, text))
+        self.ex_choice_button.menu.add_checkbutton(label='Deadlift', command = lambda value = 1, text = "Deadlift" : self.exercise_type_selected(value, text))
         self.tuning_monitor_button = ttk.Button(exc_choice_frame, command=self.monitor_tuning_button_pressed, padding=5, text="Acquire tuning data")
         self.tuning_monitor_button.pack(side=RIGHT)
         #  ----------------------------------------------------------------
@@ -512,20 +458,18 @@ class View(ttk.Frame):
         self.notebook = ttk.Notebook(self.plot_frame, padding=15)
         self.notebook.pack(fill=BOTH, expand=YES)
 
-    
     def set_controller(self, controller):
         self.controller = controller
         # Once the controller is set, sensors can be inserted in the view  
         self.controller.create_sensors_list()
         
-    
     def recording_button_pressed(self):
         if self.controller:
             self.controller.record()
 
     def monitor_tuning_button_pressed(self):
          if self.controller:
-            self.controller.grab_tuning_data()
+            self.controller.perform_tuning()
     
     def saved_button_pressed(self, directory, filename):
         if self.controller:
@@ -535,12 +479,112 @@ class View(ttk.Frame):
         if self.controller:
             self.controller.quit()
     
-    def update_exercise_type(self, value, text):
+    def exercise_type_selected(self, value, text):
         self.ex_choice_button.configure(text=text)
         if self.controller:
             self.controller.update_exercise_type(value)
     
+    def display_warning_popup(self, message):
+        top = ttk.Toplevel()
+        top.title('Warning')
+        _frame = ttk.Frame(top, padding = 25)
+        _frame.pack(expand = NO, side=TOP)
+        label = ttk.Label(_frame, text = message)
+        label.pack(expand = NO)
+        _but = ttk.Frame(top, padding = 15)
+        _but.pack(expand = NO, side=TOP)
+        but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle="outline-warning")
+        but.pack(expand = NO)   
+        top.transient()
+        top.grab_set()
 
+    def display_saving_outcome(self, outcome):
+        _error_messages = {
+            1: "Please, fill the required fields!", 
+            2: "Directory not found!",
+            3: "Saving exception, please make sure data has been read from sensors",
+            4: "No active port to store data from!"
+        }
+        if outcome == 0:
+            # Pop-up success window
+            top = ttk.Toplevel()
+            top.title('File(s) correctly saved')
+            _frame = ttk.Frame(top, padding = 25)
+            _frame.pack(expand = NO, side=TOP)
+            label = ttk.Label(_frame, text = f"Data saved in {self.directory.get()}/{self.file.get()}-*.csv", \
+                                            wraplength=220, anchor=ttk.NW, justify=ttk.LEFT)
+            label.pack(expand = NO)
+            _but = ttk.Frame(top, padding = 15)
+            _but.pack(expand = NO, side=TOP)
+            but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle = "outline-success")
+            but.pack(expand = NO)   
+            top.transient()
+            top.grab_set()
+        else:
+            # Pop-up warning window
+            top = ttk.Toplevel()
+            top.title('Warning')
+            _frame = ttk.Frame(top, padding = 25)
+            _frame.pack(expand = NO, side=TOP)
+            label = ttk.Label(_frame, text = _error_messages[outcome])
+            label.pack(expand = NO)
+            _but = ttk.Frame(top, padding = 15)
+            _but.pack(expand = NO, side=TOP)
+            but = ttk.Button(_but, text = 'Okay', command = top.destroy, bootstyle="outline-warning")
+            but.pack(expand = NO)   
+            top.transient()
+            top.grab_set()
+    
+    def display_tuning_outcomes(self, analysis_outcomes):
+        # Pop-up warning window
+        top = ttk.Toplevel()
+        top.title('Tuning outcomes')
+        _frame = ttk.Frame(top, padding = 25)
+        _frame.pack(fill=BOTH, expand=NO)
+        # Creating the figure and the corresponding tkinter widget
+        figure = Figure(figsize=(16, 8), dpi=100)
+        figure.patch.set_facecolor('#222222')
+        figure_canvas = FigureCanvasTkAgg(figure, _frame)
+        figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES, side=TOP)
+        # Setting plot colors and quantities 
+        _grey_rgb = (197/255, 202/255, 208/255)
+        _font = {   'family': 'sans-serif',
+                    'color':  'white',
+                    'weight': 'normal',
+                    'size': 14,
+            }
+        # Create the axis
+        ax = figure.add_subplot()
+        ax.set_facecolor('#222222')
+        ax.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in ax.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        # Unpacking the outcomes dictionary
+        tuning_data = analysis_outcomes["data"] 
+        zeroc_neg2pos = analysis_outcomes["rising_crossings_timestamps"]
+        zeroc_pos2neg = analysis_outcomes["falling_crossings_timestamps"]
+        p_threshold_amp = analysis_outcomes["p_threshold"]
+        v_threshold_amp = analysis_outcomes["v_threshold"]
+        peaks = analysis_outcomes["peaks_timestamps"]
+        valleys = analysis_outcomes["valleys_timestamps"]
+        # Preparing the figure
+        ax.set_ylabel("Tuning data", fontdict=_font)
+        ax.set_xlabel("Number of samples", fontdict=_font)
+        ax.plot(range(len(tuning_data)), tuning_data, color="#ffffff")
+        ax.plot(range(len(tuning_data)), np.zeros(tuning_data.shape, dtype="int8"), linestyle="dashed", color="#c5cad0")
+        ax.plot(range(len(tuning_data)), np.repeat([p_threshold_amp], len(tuning_data)), label="Peaks threshold", color='#299CB1')
+        ax.plot(range(len(tuning_data)), np.repeat([-v_threshold_amp], len(tuning_data)), label="Valleys threshold", color='#18B179')
+        #ax.scatter(x=zeroc_pos2neg,y=tuning_data[zeroc_pos2neg], c='r')
+        #ax.scatter(x=zeroc_neg2pos,y=tuning_data[zeroc_neg2pos], c='g')
+        ax.scatter(x=peaks,y=tuning_data[peaks], marker='o', color='#299CB1')
+        ax.scatter(x=valleys,y=tuning_data[valleys], marker='s', color='#18B179')
+        ax.legend(loc='upper right')
+        # Drawing the final figure
+        figure_canvas.draw()
 
+         
+        top.transient()
+        top.grab_set()
+        
 
     

@@ -168,12 +168,12 @@ class SerialSubscriber():
         acc_array = np.array(data[0:3],dtype=np.float) * acc_sensitivity
         gyro_array = np.array(data[3:6], dtype=np.float) * gyr_sensitivity * np.pi/180  # Rad/s conversion
         mag_array = np.array(data[6:9], dtype=np.float) * mag_sensitivity
-        quat = np.array(data[9:13], dtype=np.float) / 10000  # these need to be scaled by a factor of 1000
+        quat = np.array(data[9:13], dtype=np.float) / 10000  # These need to be scaled by a factor of 1000
         q = Quaternion(quat)
         inv_q = q.inverse
-        acc_fixed_rf = q.rotate(acc_array)  # rotate acceleration to be aligned with earth RF
-        lin_acc_array = np.subtract(acc_fixed_rf, self.g_ideal)  # subtract gravity
-        free_acc_body_rf = inv_q.rotate(lin_acc_array)  # rotate acceleration to be aligned with body RF again
+        acc_fixed_rf = q.rotate(acc_array)  # Rotate acceleration to be aligned with earth RF
+        lin_acc_array = np.subtract(acc_fixed_rf, self.g_ideal)  # Subtract gravity
+        free_acc_body_rf = inv_q.rotate(lin_acc_array)  # Rotate acceleration to be aligned with body RF again
 
         # Update only stores packets in the queue when the flag (that can be set false by GUI) allows it  
         if self.is_recording:
@@ -181,40 +181,21 @@ class SerialSubscriber():
             queue_item = np.concatenate((acc_array, gyro_array, mag_array, free_acc_body_rf), axis=None)
             self.queue = np.vstack((self.queue, queue_item))
 
-            #Acc = [i * aRes for i in Acc] #porto dati nelle loro M.U
-            #Acc_arr = np.array(Acc)
 
             """
-                            Quat = [i/10000 for i in Quat] #in Arduino quat eramo stati moltiplicati per 1000 per mandare dati in int
-                            Q = Quaternion(Quat)
-                            inv_Q = Q.inverse
-                            Acc_fixRF = Q.rotate(Acc_arr) #ruoto accelerazione in sist terrestre
-                            Acc_lin_arr = np.subtract(Acc_fixRF,g_ideal) #sottraggo gravità
-                            FreeAcc_bodyRF = inv_Q.rotate(Acc_lin_arr).tolist() #riporto in sistema del sensore
-                            dt_real = Acc + Gyro + Mag + Quat + FreeAcc_bodyRF
-                            dt_real.append(time.time())
-                            count_values += 1
-                            #seguente funzione è usata in caso non si stia registrando per resettare tabella in cui vengono messi i dati
-                            #man mano che arrivano per non appesantire troppo la memoria
-                            if rec_flag == False:
-                                if count_values % 5400 == 0: #ogni circa 1 min viene resettata data_struct
-                                    count_values = 0
-                                    self.data_struct = {}
-                                    for field in self.myFields:
-                                        self.data_struct[field] = []
-                            if flag_repetition_extraction == True:
-                                self.repetition_extraction(exercise_name,dt_real) #solo per sensore da cui estraggo ripetizioni
-                            for i, field in enumerate(self.data_struct.keys()):
-                                self.data_struct[field].append(dt_real[i]) #aggiungo dati a data_struct
-                            if position_called == self.position: #se il sensore è stato chiamato dalla GUI x visualizzazione
-                                if data_sended_counter == 0:
-                                    print(self.position+' start streaming')
-                                data_sended_counter += 1
-                                if self.data_receive.poll() == False:
-                                    self.data_send.send(dt_real) #invio pacchetto di dati al Thread x visualizzazione       
-                    else: #se leggo solo un dato --> batteria
-                        if position_called == self.position:
-                            self.battery_level_send.send(samp) #invio livello batteria x essere mostrato in GUI
+                    if flag_repetition_extraction == True:
+                        self.repetition_extraction(exercise_name,dt_real) #solo per sensore da cui estraggo ripetizioni
+                    for i, field in enumerate(self.data_struct.keys()):
+                        self.data_struct[field].append(dt_real[i]) #aggiungo dati a data_struct
+                    if position_called == self.position: #se il sensore è stato chiamato dalla GUI x visualizzazione
+                        if data_sended_counter == 0:
+                            print(self.position+' start streaming')
+                        data_sended_counter += 1
+                        if self.data_receive.poll() == False:
+                            self.data_send.send(dt_real) #invio pacchetto di dati al Thread x visualizzazione       
+            else: #se leggo solo un dato --> batteria
+                if position_called == self.position:
+                    self.battery_level_send.send(samp) #invio livello batteria x essere mostrato in GUI
             """
 
 
@@ -222,8 +203,7 @@ class SerialSubscriber():
             print(self.queue.shape)
 
         # The data is plotted even if the app is not recording data
-        # Roll the array to append the data at the end of the array and
-        # remove the first entry
+        # Roll the array to append the data at the end of the array and remove the first entry
         self.plot_data = np.roll(self.plot_data, -1, axis=1)
         self.plot_data[:3, -1] = acc_array
         self.plot_data[3:6, -1] = gyro_array
