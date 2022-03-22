@@ -180,25 +180,6 @@ class SerialSubscriber():
             delta_time = time.time() 
             queue_item = np.concatenate((acc_array, gyro_array, mag_array, free_acc_body_rf), axis=None)
             self.queue = np.vstack((self.queue, queue_item))
-
-
-            """
-                    if flag_repetition_extraction == True:
-                        self.repetition_extraction(exercise_name,dt_real) #solo per sensore da cui estraggo ripetizioni
-                    for i, field in enumerate(self.data_struct.keys()):
-                        self.data_struct[field].append(dt_real[i]) #aggiungo dati a data_struct
-                    if position_called == self.position: #se il sensore è stato chiamato dalla GUI x visualizzazione
-                        if data_sended_counter == 0:
-                            print(self.position+' start streaming')
-                        data_sended_counter += 1
-                        if self.data_receive.poll() == False:
-                            self.data_send.send(dt_real) #invio pacchetto di dati al Thread x visualizzazione       
-            else: #se leggo solo un dato --> batteria
-                if position_called == self.position:
-                    self.battery_level_send.send(samp) #invio livello batteria x essere mostrato in GUI
-            """
-
-
             print("Update received!")
             print(self.queue.shape)
 

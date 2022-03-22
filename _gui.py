@@ -94,19 +94,20 @@ class Controller():
         Thread(target = lambda fig=figure, canvas=figure_canvas, port=port, meter=_meter: self.update_graph(fig,canvas, port, meter)).start()
 
     def calibrate_sensor(self, port):
-        # TODO: send calibration command to sensors 
-        """
-        From Laura's code:
-        if self.readable_magcal_pipes[self.position].poll():
-                data_cal = self.readable_magcal_pipes[self.position].recv() #ricevo info su ricalibrazione mag
-                if data_cal == 'start calibration':
-                    self.ser.write(b'b') #invio carattere ad Arduino per informarlo del voler fare ricalibrazione 
-                else:
-                    print(data_cal) #al termine della calibrazione ottendgo valori di bias e scale
-                    data_send = data_cal+'\n'
-                    self.ser.write(data_send.encode()) #invio valori ad Arduino per salvarli nei registri 
-        """
         print(f"Calibrating {port}")
+        ports = self.model.ports
+        # Clear the queue before calibration
+        ports[port].clear_queue()
+        # Send calibration signal to Arduino
+        ports[port].write_to_serial('b')
+        # Starts collecting the calibration data on the listener
+        ports[port].start_recording()
+        # Waits for magetometer data to be collected and stop collection
+        time.sleep(10)
+        ports[port].stop_recording()
+        # Ask model to process data
+        uncalibrated_data, calibrated_data = self.model.process_calibration_data(port)
+        self.view.display_calibration_outcomes(uncalibrated_data, calibrated_data)
 
     def perform_tuning(self):
         ports = self.model.ports
@@ -326,6 +327,25 @@ class Model():
             analysis_outcomes["v_threshold"] = round(valley_depth*threshold_percentage,2)
             
         return analysis_outcomes
+    
+    def process_calibration_data(self, port):
+        uncalibrated_data = self.ports[port].listener.queue[1:,6:9]
+        # Extracting min-max values
+        min_mag_cal_data = np.min(uncalibrated_data, axis=0)
+        max_mag_cal_data = np.max(uncalibrated_data, axis=0)
+        # Computing the average
+        mag_bias = np.round((np.mean((min_mag_cal_data, max_mag_cal_data), axis=0)),2)
+        # Computing the element-wise difference and its mean
+        mag_diff = (max_mag_cal_data - min_mag_cal_data)/2
+        mag_mean = np.sum(mag_diff)/3
+        # Packing data 
+        mag_scale = np.round((1/mag_diff * mag_mean),2)
+        data_str = f"{mag_bias[0]},{mag_scale[0]},{mag_bias[1]},{mag_scale[1]},{mag_bias[2]},{mag_scale[2]}\n"
+        print(data_str)
+        # Send calibration quantities back to Arduino
+        self.ports[port].write_to_serial(data_str)
+        calibrated_data = np.multiply((uncalibrated_data - mag_bias), mag_scale) 
+        return uncalibrated_data, calibrated_data
 
     def write_file(self, path, filename):
         # Writes the file and returns a value corresponding to the error (if any) 
@@ -536,7 +556,7 @@ class View(ttk.Frame):
             top.grab_set()
     
     def display_tuning_outcomes(self, analysis_outcomes):
-        # Pop-up warning window
+        # Pop-up window
         top = ttk.Toplevel()
         top.title('Tuning outcomes')
         _frame = ttk.Frame(top, padding = 25)
@@ -583,6 +603,59 @@ class View(ttk.Frame):
         figure_canvas.draw()
 
          
+        top.transient()
+        top.grab_set()
+    
+    def display_calibration_outcomes(self, uncalibrated_data, calibrated_data):
+        # Pop-up  window
+        top = ttk.Toplevel()
+        top.title('Calibration outcomes')
+        _frame = ttk.Frame(top, padding = 25)
+        _frame.pack(fill=BOTH, expand=NO)
+        # Creating the figure and the corresponding tkinter widget
+        figure = Figure(figsize=(16, 8), dpi=100)
+        figure.patch.set_facecolor('#222222')
+        figure_canvas = FigureCanvasTkAgg(figure, _frame)
+        figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES, side=TOP)
+        # Setting plot colors and quantities 
+        _grey_rgb = (197/255, 202/255, 208/255)
+        _font = {   'family': 'sans-serif',
+                    'color':  'white',
+                    'weight': 'normal',
+                    'size': 14,
+            }
+        # Create the subplots
+        # Uncalibrated results
+        uncal_ax = figure.add_subplot(121)
+        uncal_ax.set_facecolor('#222222')
+        uncal_ax.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in uncal_ax.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        # Preparing the figure
+        uncal_ax.set_title('Magnetometer AK8963 uncalibrated results', fontdict=_font)
+        # Scatterpoints
+        uncal_ax.scatter(x=uncalibrated_data[:,0],y=uncalibrated_data[:,1], marker='^', c="#299CB1", label='Mxy')
+        uncal_ax.scatter(x=uncalibrated_data[:,0],y=uncalibrated_data[:,2], marker='s', c='#18B179', label='Mxz')
+        uncal_ax.scatter(x=uncalibrated_data[:,1],y=uncalibrated_data[:,2], marker='o', c='#825194', label='Myz')
+        uncal_ax.legend(loc='upper right')
+
+        # Calibrated results
+        cal_ax = figure.add_subplot(122)
+        cal_ax.set_facecolor('#222222')
+        cal_ax.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        for spine in cal_ax.spines.values():
+            spine.set_edgecolor(_grey_rgb)
+        # Preparing the figure
+        cal_ax.set_title('Magnetometer AK8963 calibrated results', fontdict=_font)
+        # Scatterpoints
+        cal_ax.scatter(x=calibrated_data[:,0],y=calibrated_data[:,1], marker='^', c="#299CB1", label='Mxy')
+        cal_ax.scatter(x=calibrated_data[:,0],y=calibrated_data[:,2], marker='s', c='#18B179', label='Mxz')
+        cal_ax.scatter(x=calibrated_data[:,1],y=calibrated_data[:,2], marker='o', c='#825194', label='Myz')
+        cal_ax.legend(loc='upper right')
+        
+        # Drawing the final figure
+        figure_canvas.draw()
+
         top.transient()
         top.grab_set()
         
