@@ -2,6 +2,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.scrolled import ScrolledFrame
 from tkinter import PhotoImage
 from ttkbootstrap.constants import *
+import matplotlib.pyplot as plt
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -42,13 +43,17 @@ class Controller():
             _label.config(foreground="gray")
             _label.pack(side=LEFT)
 
+            _stopcal_button = ttk.Button(sensor_row, text='stop', command = self.stopcal_sensor, bootstyle="outline-secondary")
             _calibration_button = ttk.Button(sensor_row, text='Calibrate', command = lambda port=port : self.calibrate_sensor(port), bootstyle="outline-secondary")
             _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port=port, label=_label, cal_button=_calibration_button: self.connect_sensor(port, label,cal_button), bootstyle="outline-primary")
             _connect_button.pack(side=LEFT, padx=(15, 0))
             # _calibration_button defined above to pass it to _connect_button
             _calibration_button.pack(padx=(15, 0))
             _calibration_button.configure(state=DISABLED)
-    
+            _stopcal_button.pack(padx=(15, 0))
+            # _stopcal_button.configure(state=DISABLED)
+
+
     def connect_sensor(self, port, label, cal_button):
         self.model.start_serial_port(port)
         # Activate the label and the calibration button
@@ -113,8 +118,6 @@ class Controller():
 
         
 
-        # start_time = time.time()
-
         ports = self.model.ports
        
         mag_diff = []
@@ -125,35 +128,68 @@ class Controller():
         _serial_port = self.model.serial_port
         _serial_port.write_to_serial('b')
 
-        # while (time. time() - start_time) <= 10:
-        #NOTE: Laura non agisce subito sui dati ma ne fa una copia e lavora con la copia
         
         ports[port].start_calibrating()
-
-        print('start')
+        print('Starting calibration')
         time.sleep(10) #durante questi 10 secondi muovi il sensore
-        data = ports[port].listener.magn[1:] #NOTE: i dati vengono appesi solo quando ho il flag di calibrazione a True
+        self.data = ports[port].listener.magn[1:] #NOTE: i dati vengono appesi solo quando ho il flag di calibrazione a True
+        print(self.data)
+        print('Calibration finished')
         ports[port].stop_calibrating()
-        # print(f"Calibrating {data}")
-        print(f"Calibrating {data.shape}")
+        print(f"Calibrating {self.data.shape}")
 
-        for i in range(data.shape[1]): #x,y,z
-            mag_i_max = max(data[:,i]) 
-            mag_i_min = min(data[:,i]) 
+        for i in range(self.data.shape[1]): #x,y,z
+            mag_i_max = max(self.data[:,i]) 
+            # print(mag_i_max)
+            mag_i_min = min(self.data[:,i]) 
             self.mag_bias.append((mag_i_max + mag_i_min)/2)
             mag_diff.append((mag_i_max - mag_i_min)/2)
         mag_mean = sum(mag_diff)/3
 
-        for i in range(data.shape[1]): #x,y,z
+        for i in range(self.data.shape[1]): #x,y,z
             self.mag_scale.append((mag_mean/mag_diff[i]))
-            mag_cal.append([(j-self.mag_bias[i])*self.mag_scale[i] for j in data[:,i]])
-        
+            mag_cal.append([(j-self.mag_bias[i])*self.mag_scale[i] for j in self.data[:,i]])
+
+        self.mag_cal = mag_cal
         data_cal = str(round(self.mag_bias[0],2))+','+str(round(self.mag_scale[0],2))+','+str(round(self.mag_bias[1],2))+','+str(round(self.mag_scale[1],2))+','+str(round(self.mag_bias[2],2))+','+str(round(self.mag_scale[2],2))
-        # print(data_cal) #al termine della calibrazione ottengo valori di bias e scale
-        # print(self.mag_bias)
-        # print(self.mag_scale)
+
         data_send = data_cal+'\n'
         _serial_port.write_to_serial(data_send)
+        
+
+
+    def stopcal_sensor(self):
+        # self.data = np.zeros(3,)
+        top = ttk.Toplevel()
+        top.title('CALIBRATION RESULTS')
+        frame = ttk.Frame(top, bootstyle="dark")
+        frame.pack(fill=BOTH, expand=YES)
+        figure = plt.figure(facecolor ='#282828')
+        figure_canvas = FigureCanvasTkAgg(figure, frame)
+        figure_canvas.get_tk_widget().pack(fill=BOTH,  expand=YES)
+        
+        _grey_rgb = (197/255, 202/255, 208/255)
+           
+        ax_MagUncal = figure.add_subplot(121)
+        ax_MagUncal.set_facecolor('#EAEAEA')
+        ax_MagUncal.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+
+        ax_MagCal = figure.add_subplot(122)
+        ax_MagCal.tick_params(color=_grey_rgb, labelcolor=_grey_rgb)
+        ax_MagCal.set_facecolor('#EAEAEA')
+
+        ax_MagUncal.set_title('Magnetometer AK8963 uncalibrated results',color= 'white')
+        ax_MagCal.set_title('Magnetometer AK8963 calibrated results', color= 'white')
+
+        # self.data = ports[port].listener.magn[1:]
+        ax_MagUncal.plot(self.data[:,0],self.data[:,1],'^m',markersize = 5,label = 'Mxy')
+        ax_MagUncal.plot(self.data[:,0],self.data[:,2],'sb',markersize = 5,label = 'Mxz')
+        ax_MagUncal.plot(self.data[:,1],self.data[:,2],'oc',markersize = 5,label = 'Myz')
+        ax_MagCal.plot(self.mag_cal[:][0],self.mag_cal[:][1],'^m',markersize = 5,label = 'Mxy')
+        ax_MagCal.plot(self.mag_cal[:][0],self.mag_cal[:][2],'sb',markersize = 5,label = 'Mxz')
+        ax_MagCal.plot(self.mag_cal[:][1],self.mag_cal[:][2],'oc',markersize = 5,label = 'Myz')
+        ax_MagUncal.legend(loc="upper right")
+        ax_MagCal.legend(loc="upper right")
     
     def update_graph(self, figure, canvas, port, meter):
         ports = self.model.ports
@@ -265,7 +301,7 @@ class Controller():
         #exit()
 
 
-class Model():
+class Model():  
     """
     The model act as a serial port manager: mantains an array of processes, 
     each controlling a SerialPort object for all connected sensors. 
@@ -481,8 +517,4 @@ class View(ttk.Frame):
     def quit_button_pressed(self):
         if self.controller:
             self.controller.quit()
-    
-
-
-
     
