@@ -39,7 +39,7 @@ class SerialPort(serial.Serial):
     def stop_recording(self):
         if self.listener:
             self.listener.is_recording = False
-    
+
     def clear_queue(self):
         self.listener.queue = np.empty((1,12), dtype=np.float) 
 
@@ -146,12 +146,13 @@ class SerialSubscriber():
     def __init__(self):
         n_samples = 1000
         self.total_lvl = 0.0
-        self.g_ideal = np.array([0, 0, 1]) #vettore gravità
         self.batt_level = 0
         self.n_batt_updates = 0
         self.is_recording = False
+        self.is_calibrating = False
         self.plot_data = np.zeros((9,n_samples), dtype=np.float)  # Keeping the last 25 values to be plotted
-        self.queue = np.empty((1,12), dtype=np.float) 
+        self.queue = np.empty((1,9), dtype=np.float) 
+        self.magn = np.empty((1,3), dtype=np.float) 
 
     def compute_battery_level(self, new_lvl):
         self.total_lvl += new_lvl
@@ -178,7 +179,7 @@ class SerialSubscriber():
         # Update only stores packets in the queue when the flag (that can be set false by GUI) allows it  
         if self.is_recording:
             delta_time = time.time() 
-            queue_item = np.concatenate((acc_array, gyro_array, mag_array, free_acc_body_rf), axis=None)
+            queue_item = np.concatenate((acc_array, gyro_array, mag_array), axis=None)
             self.queue = np.vstack((self.queue, queue_item))
             print("Update received!")
             print(self.queue.shape)
@@ -190,6 +191,9 @@ class SerialSubscriber():
         self.plot_data[3:6, -1] = gyro_array
         self.plot_data[6:9, -1] = mag_array
 
+        if self.is_calibrating:
+            self.magn = np.vstack((self.magn, mag_array))
+
 class SerialPortManager(BaseManager): pass
 
 class SerialProcessProxy(NamespaceProxy):
@@ -200,6 +204,12 @@ class SerialProcessProxy(NamespaceProxy):
     def packets_stream(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('packets_stream')
+    def start_calibrating(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('start_calibrating')
+    def stop_calibrating(self):
+        callmethod = object.__getattribute__(self, '_callmethod')
+        return callmethod('stop_calibrating')
     def start_recording(self):
         callmethod = object.__getattribute__(self, '_callmethod')
         return callmethod('start_recording')

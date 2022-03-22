@@ -3,6 +3,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.scrolled import ScrolledFrame
 from tkinter import PhotoImage
 from ttkbootstrap.constants import *
+import matplotlib.pyplot as plt
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -51,13 +52,17 @@ class Controller():
             _label.config(foreground="gray")
             _label.pack(side=LEFT)
 
+            _stopcal_button = ttk.Button(sensor_row, text='stop', command = self.stopcal_sensor, bootstyle="outline-secondary")
             _calibration_button = ttk.Button(sensor_row, text='Calibrate', command = lambda port=port : self.calibrate_sensor(port), bootstyle="outline-secondary")
             _connect_button = ttk.Button(sensor_row, text='Connect', command = lambda port=port, label=_label, cal_button=_calibration_button: self.connect_sensor(port, label,cal_button), bootstyle="outline-primary")
             _connect_button.pack(side=LEFT, padx=(15, 0))
             # _calibration_button defined above to pass it to _connect_button
             _calibration_button.pack(padx=(15, 0))
             _calibration_button.configure(state=DISABLED)
-    
+            _stopcal_button.pack(padx=(15, 0))
+            # _stopcal_button.configure(state=DISABLED)
+
+
     def connect_sensor(self, port, label, cal_button):
         self.model.start_serial_port(port)
         # Set the port
@@ -245,7 +250,7 @@ class Controller():
                 return  #Necessary to break or for loop can destroy all the tabs when first tab is deleted
 
 
-class Model():
+class Model():  
     """
     The model act as a serial port manager: mantains an array of processes, 
     each controlling a SerialPort object for all connected sensors. 
@@ -266,6 +271,7 @@ class Model():
             s = SerialSubscriber()
             serial_port = self.spm.SerialPort(port, baudrate=57600, timeout=1.5, write_timeout=0, subscriber=s)
             #start_port(port)
+            self.serial_port = serial_port 
             serial_port.write_to_serial('v')
             p = Process(target=serial_port.packets_stream)
             print("Starting process")
@@ -498,7 +504,7 @@ class View(ttk.Frame):
     def quit_button_pressed(self):
         if self.controller:
             self.controller.quit()
-    
+
     def exercise_type_selected(self, value, text):
         self.ex_choice_button.configure(text=text)
         if self.controller:
@@ -658,6 +664,3 @@ class View(ttk.Frame):
 
         top.transient()
         top.grab_set()
-        
-
-    
