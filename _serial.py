@@ -97,7 +97,7 @@ class SerialPort(serial.Serial):
                         h = b[0]
                     count += 1
                 except Exception as e: 
-                    print(f"Couldn't read from serial: {e}")
+                    print(f"Couldn't read from {self._port}: {e}")
             # Unpack the bytes received in
             # a proper data structure
             if len(raw_data)==packet_length:
