@@ -1,2 +1,2 @@
 # MARS-PRE
-This repository will contain the code require for astronauts to perform exercises on the ARED machine during long-term space flights
+This repository holds the GUI code used to develop the software tool described in "IMU-Based Classification of Resistive Exercises for Real-Time Training Monitoring"
